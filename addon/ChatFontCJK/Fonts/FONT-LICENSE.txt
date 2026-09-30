@@ -1,0 +1,3 @@
+SarasaGothicK-Regular.ttf — Sarasa Gothic v1.0.42 (https://github.com/be5invis/Sarasa-Gothic)
+Copyright (c) Belleve Invis and contributors (based on Source Han Sans by Adobe and Inter by Rasmus Andersson).
+Licensed under the SIL Open Font License, Version 1.1 — https://openfontlicense.org

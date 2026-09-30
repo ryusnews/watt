@@ -1,0 +1,708 @@
+"""WoW 실시간 통역(시제품) — 채팅창을 읽어 영어·중국어 메시지를 한국어로 번역해 게임 위 창에 띄운다.
+
+python -m watt --role live           # 채팅 영역 자동 찾기 → 0.5초마다 읽기 → 번역 창
+흐름: watt.chat_region(영역) → watt.ocr(바뀌었을 때만, en/ko/zh/ru 엔진) → 줄마다 엔진 고르기 → 줄바꿈 합치기
+      → 새 메시지만 → 캐시 → gemma4 번역(incoming) → 창. 게임에 입력하지 않는다.
+창: 끌어서 옮기기 · 오른쪽 클릭 → 영역 다시 찾기 / 종료.
+"""
+import ctypes
+import difflib
+import json
+import queue
+import re
+import threading
+import time
+import tkinter as tk
+from collections import Counter, deque
+from pathlib import Path
+
+from watt import chat_region, paths, screen, settings
+from watt import tkstyle as tks
+from watt.ocr import Reader
+
+from . import incoming
+
+LOG = paths.LOGS / "live.jsonl"
+INTERVAL = 0.5
+SCALE = 2
+
+HANGUL = re.compile(r"[가-힣]")
+CJK = re.compile(r"[一-鿿]")
+CYRILLIC = re.compile(r"[Ѐ-ӿ]")
+LATIN = re.compile(r"[A-Za-z]")
+# 라틴 문자와 모양이 다른 키릴 문자 — 러시아어 엔진이 영어를 읽으며 만드는 가짜 키릴(ТВ, Ме1оп)과 가르는 데 쓴다
+CYR_DISTINCT = re.compile(r"[БГДЖЗИЙЛФЦЧШЩЪЫЬЭЮЯбвгдёжзийлфцчшщъыьэюяЄєЇїІіҐґ]")
+
+
+TAGS = re.compile(r"<[^>]*>|\[[^\]]*\]")  # <길드명> [이름] — 라틴 길드명이 키릴 비율을 끌어내리지 않게
+
+
+def looks_russian(text: str) -> bool:
+    core = TAGS.sub(" ", text)
+    cyr, lat = len(CYRILLIC.findall(core)), len(LATIN.findall(core))
+    return cyr >= 3 and cyr >= 0.6 * (cyr + lat) and len(CYR_DISTINCT.findall(core)) >= 2
+
+
+def is_junk(body: str) -> bool:
+    """OCR 잡음(*fifi + +, R-fi±T2, 4/ixFf#) — 번역하지 않는다. 글자(한글·한자·라틴·키릴)가 4자 미만이거나 기호·숫자가 35%↑."""
+    chars = re.sub(r"\s", "", body)
+    letters = len(re.findall(r"[A-Za-zЀ-ӿ一-鿿가-힣]", chars))
+    if letters < 4 and not (letters >= 2 and CJK.search(chars)):
+        return True
+    return (len(chars) - letters) / max(1, len(chars)) >= 0.35
+
+
+def _letters(text: str) -> int:
+    return (len(HANGUL.findall(text)) + len(CJK.findall(text)) + len(LATIN.findall(text))
+            + len(CYRILLIC.findall(text)))
+
+
+def looks_chinese(text: str) -> bool:
+    """한자가 글자의 40%↑([이름]·<길드> 빼고) — 키릴·라틴을 읽다 섞여 나온 한자 몇 개(月角 沩)는 걸러진다."""
+    core = TAGS.sub(" ", text)
+    han = len(CJK.findall(core))
+    return han >= 2 and han >= 0.4 * _letters(core)
+
+
+def looks_korean(text: str) -> bool:
+    """한글 2자↑이고 글자의 절반↑([이름]·<길드> 빼고) — 한국어 엔진이 키릴·한자를 읽다 만든 가짜 한글(너, 뇌) 몇 개는 걸러진다."""
+    core = TAGS.sub(" ", text)
+    hangul = len(HANGUL.findall(core))
+    return hangul >= 2 and hangul >= 0.5 * _letters(core)
+
+
+def english_garbled(text: str) -> bool:
+    """영어 엔진이 키릴 글을 억지로 읽은 흔적: 숫자·글자가 섞인 낱말(3apa3, C06i), 대소문자가 뒤죽박죽인 낱말(nOTVXHV)."""
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", text) if len(w) >= 3]
+    if not words:
+        return False
+    bad = sum(1 for w in words if (re.search(r"\d", w) and re.search(r"[A-Za-z]", w))
+              or re.search(r"[a-z][A-Z]", w))
+    return bad / len(words) >= 0.25
+# [채널] [이름]: 본문 — 채널 번호가 빠지거나(OCR) 괄호 없이 읽혀도(2 [이름]:) 새 메시지로 본다.
+# 채널을 못 읽은 줄을 줄바꿈으로 오인해 여러 메시지가 한데 붙던 문제(2026-09-30 분석)
+# 이름 뒤 콜론을 마침표·쉼표로 읽는 경우도 받는다([6] [Skiddo Prime]. LF3M BFD)
+HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*([^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]\s*[:：.,;]\s*(.*)$")
+BRACKET = re.compile(r"\[[^\[\]]{2,60}\]")
+
+
+def _clean_cyrillic(s: str) -> bool:
+    cyr, lat = len(CYRILLIC.findall(s)), len(LATIN.findall(s))
+    return cyr >= 3 and cyr >= 0.6 * (cyr + lat) and len(CYR_DISTINCT.findall(s)) >= 2
+
+
+def _clean_chinese(s: str) -> bool:
+    han = len(CJK.findall(s))
+    return han >= 2 and han >= 0.5 * _letters(s)
+
+
+def repair_segments(text: str, ru: str | None, zh: str | None) -> str:
+    """영어로 고른 줄 안의 [링크](러시아어·중국어 아이템·NPC 이름)는 그 언어 엔진이 읽은 것으로 바꾼다
+    (2026-09-30: LFM [Hon'apyK CTePBRTHVIK] ← 러시아어 엔진은 [Чол'арук Стерв…])."""
+    segs = BRACKET.findall(text)
+    if not segs:
+        return text
+    for other, clean in ((ru, _clean_cyrillic), (zh, _clean_chinese)):
+        alt = BRACKET.findall(other or "")
+        if len(alt) != len(segs):
+            continue
+        for mine, theirs in zip(segs, alt):
+            if clean(theirs[1:-1]) and not clean(mine[1:-1]):
+                text = text.replace(mine, CJK_GAP.sub("", theirs), 1)
+    return text
+CJK_GAP = re.compile(r"(?<=[　-鿿＀-￯])\s+(?=[　-鿿＀-￯])")
+
+
+def find_region() -> dict:
+    """채팅 영역(화면 좌표). 너무 작게 잡히면(채팅 줄이 한두 개뿐인 순간) 오류 — 지난 정상 영역을 쓴다."""
+    return chat_region.screen_rect(chat_region.find_and_save())
+
+
+# ---- 줄 고르기 · 메시지 만들기
+def pick_lines(lines: dict, line_h: int) -> list[dict]:
+    """엔진들의 같은 위치 줄 중 그럴듯한 것: 한글 → ko, 한자 → zh, 진짜 러시아어(키릴 60%↑) → ru, 그 밖 → en."""
+    en, ko, zh, ru = (lines.get("en-US") or [], lines.get("ko") or [], lines.get("zh-Hans-CN") or [],
+                      lines.get("ru-RU") or [])
+    anchors = sorted(en + ko + zh + ru, key=lambda l: l["y"])
+    rows: list[list[dict]] = []
+    for l in anchors:  # 세로 위치로 같은 줄 묶기
+        if rows and abs(rows[-1][0]["y"] - l["y"]) <= line_h * 0.5:
+            rows[-1].append(l)
+        else:
+            rows.append([l])
+    out = []
+    for row in rows:
+        def by(src):
+            return next((l for l in row if l in src), None)
+        k, z, e, r = by(ko), by(zh), by(en), by(ru)
+        feat = {"hangul": len(HANGUL.findall(k["t"])) if k else 0, "ko": bool(k and looks_korean(k["t"])),
+                "zh": bool(z and looks_chinese(z["t"])), "ru": bool(r and looks_russian(r["t"])),
+                "en_garbled": bool(e and english_garbled(e["t"]))}
+        if feat["ko"]:
+            chosen, lang = k, "ko"
+        elif feat["zh"]:
+            chosen, lang = z, "zh"
+        elif feat["ru"] and (not e or feat["en_garbled"]):
+            chosen, lang = r, "ru"  # 영어 엔진이 깨끗하게 읽은 줄은 영어로 둔다(짧은 영어가 가짜 키릴로 읽힐 때)
+        else:
+            chosen, lang = (e or k or z or r), "en"  # 러시아어 엔진만 찾은 줄도 있다
+        text = CJK_GAP.sub("", chosen["t"]) if lang == "zh" else chosen["t"]
+        if lang == "en":
+            text = repair_segments(text, r and r["t"], z and z["t"])
+        row = {"y": chosen["y"], "x": min(l["x"] for l in row), "text": text, "lang": lang, "feat": feat,
+               "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
+        if not HEADER.match(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
+            row["alt_header"] = next((c["t"] for c in (e, r, z, k) if c and HEADER.match(c["t"])
+                                      and HEADER.match(c["t"]).group(1)), None)
+        out.append(row)
+    return out
+
+
+def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -> list[dict]:
+    """머리([채널] [이름]:)로 시작하는 줄 + 이어지는 줄바꿈 줄 = 메시지. 머리 없는 맨 위 조각·시스템 메시지는 버린다.
+    orphans 를 주면 버린 줄(머리도 아니고 이어지는 줄도 아닌 것)을 담는다 — 머리 인식 실패를 찾는 데 쓴다."""
+    msgs, cur, last_y = [], None, None
+    # 들여쓰기는 채팅창 왼쪽 여백 기준 — 머리 줄 x 기준이면, OCR 이 [6] 을 빠뜨려 머리 줄이 오른쪽에서 시작할 때
+    # 들여쓴 뒷줄이 떨어져 나간다(2026-09-30 frame 122: 3줄 광고가 첫 줄만 번역)
+    margin = min((r["x"] for r in rows), default=0)
+    for r in rows:
+        m = HEADER.match(r["text"])
+        body = m.group(3) if m else None
+        if not m and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 콜론 뒤)으로
+            m = HEADER.match(r["alt_header"])
+            colon = re.search(r"[:：]", r["text"][:48])
+            body = r["text"][colon.end():] if colon else m.group(3)
+        if m:
+            ch = m.group(1)
+            if not ch:  # 고른 엔진이 [6] 을 빠뜨렸으면 다른 엔진이 읽은 채널 번호로
+                for c in r["cand"].values():
+                    h = HEADER.match(c or "")
+                    if h and h.group(1):
+                        ch = h.group(1)
+                        break
+            cur = {"ch": ch or "?", "name": m.group(2).strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
+                   "x": r["x"], "rows": [r]}
+            msgs.append(cur)
+            last_y = r["y"]
+        elif cur and r["y"] - last_y <= line_h * 1.6 and r["x"] >= margin + line_h * 0.4:  # 바로 아래 + 들여쓴 줄 = 줄바꿈된 뒷부분
+            cur["body"] += ("" if r["lang"] == "zh" else " ") + r["text"].strip()
+            if r["lang"] == "zh":
+                cur["lang"] = "zh"
+            cur["rows"].append(r)
+            last_y = r["y"]
+        else:
+            cur = None
+            if orphans is not None:
+                orphans.append(r)
+    for m in msgs:
+        settle_language(m)
+    return msgs
+
+
+def settle_language(m: dict) -> None:
+    """메시지 언어를 줄 전체로 정한다(첫 줄만 보지 않는다). 줄바꿈된 러시아어·우크라이나어가 첫 줄만 영어로 읽혀
+    메시지 전체가 영어로 번역되던 문제(2026-09-30 분석). 러시아어로 정해지면 영어로 고른 줄은 러시아어 엔진 결과로 바꾼다."""
+    weight = Counter()
+    for r in m["rows"]:
+        weight[r["lang"]] += len(r["text"])
+    foreign = [(w, lang) for lang, w in weight.items() if lang in ("ru", "zh")]
+    if weight.get("ko", 0) > sum(weight.values()) / 2:
+        m["lang"] = "ko"
+    elif foreign:
+        m["lang"] = max(foreign)[1]
+    else:
+        m["lang"] = "en" if weight.get("en") else m["lang"]
+    lang = m["lang"]
+    if lang in ("ru", "zh") and any(r["lang"] != lang and r["cand"].get(lang) for r in m["rows"]):
+        # 메시지 언어가 정해지면 모든 줄을 그 언어 엔진 결과로 통일(다른 엔진이 만든 가짜 한자·깨진 영어가 섞이지 않게)
+        parts = []
+        for i, r in enumerate(m["rows"]):
+            text = r["cand"].get(lang) or r["text"]
+            if lang == "zh":
+                text = CJK_GAP.sub("", text)
+            if i == 0:
+                h = HEADER.match(text)
+                text = h.group(3) if h else text
+            parts.append(text.strip())
+        m["body"] = ("" if lang == "zh" else " ").join(p for p in parts if p)
+
+
+def load_ui() -> dict:
+    try:
+        return json.loads(paths.LIVE_UI.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_ui(ui: dict) -> None:
+    paths.ensure()
+    paths.LIVE_UI.write_text(json.dumps(ui, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def norm(s: str) -> str:
+    return re.sub(r"[\W_]+", "", s).lower()
+
+
+class Seen:
+    """최근 메시지(흔들리는 OCR 을 감안해 비슷하면 같은 것으로)."""
+
+    THRESHOLD = 0.88
+
+    def __init__(self, size: int = 80):
+        self.keys: deque[str] = deque(maxlen=size)
+
+    def check(self, key: str) -> tuple[bool, float, str]:
+        """(새것인가, 가장 비슷한 것과의 유사도, 그 키). 새것이면 기억한다."""
+        best, best_key = 0.0, ""
+        for k in self.keys:
+            ratio = 1.0 if k == key else difflib.SequenceMatcher(None, k, key).ratio()
+            if ratio > best:
+                best, best_key = ratio, k
+            if ratio >= self.THRESHOLD:
+                return False, ratio, k
+        self.keys.append(key)
+        return True, best, best_key
+
+
+class Trace:
+    """단계별 추적 기록 — logs/trace/trace_YYYYMMDD.jsonl. 분석: python -m tools.analyze_live (tools/analyze_live.py)."""
+
+    def __init__(self):
+        self.dir = paths.LOGS / "trace"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.sid = time.strftime("%H%M%S")
+        self.lock = threading.Lock()
+
+    def write(self, ev: str, **kw) -> None:
+        now = time.time()
+        rec = {"t": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)) + f".{int(now * 1000) % 1000:03d}",
+               "sid": self.sid, "ev": ev, **kw}
+        path = self.dir / f"trace_{time.strftime('%Y%m%d')}.jsonl"
+        with self.lock, path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+# ---- 창 — 런처(WATT)와 같은 색·글꼴(watt.tkstyle). 설정은 런처에서 바꾸면 2초 안에 반영
+class Overlay:
+    def __init__(self, root: tk.Tk, region: dict, cfg: dict):
+        self.root = root
+        self.cfg = cfg
+        tks.load_fonts(root)
+        self.show = int(cfg.get("overlay_lines", 10))
+        size = int(cfg.get("overlay_font", 11))
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.attributes("-alpha", float(cfg.get("overlay_alpha", 0.88)))
+        self.win.configure(bg=tks.LINE)  # 1px 테두리
+        body = tk.Frame(self.win, bg=tks.BG)
+        body.pack(fill="both", expand=True, padx=1, pady=1)
+        self.region = region
+        saved = load_ui().get("overlay")
+        self.win.geometry(saved or self._default_geometry(size))
+        bar = tk.Frame(body, bg=tks.BAR, height=24)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        mark = tks.logo(bar, 13, tks.BAR)
+        mark.pack(side="left", padx=(9, 7))
+        self.status = tk.Label(bar, text="", fg=tks.MUTED, bg=tks.BAR, anchor="w", font=(tks.MONO, 8))
+        self.status.pack(side="left", fill="x", expand=True)
+        close = tk.Label(bar, text="✕", fg=tks.FAINT, bg=tks.BAR, font=(tks.SANS, 9), cursor="hand2")
+        close.pack(side="right", padx=8)
+        close.bind("<Button-1>", lambda e: root.destroy())
+        self.text = tk.Text(body, bg=tks.BG, fg=tks.FG, relief="flat", bd=0, highlightthickness=0, wrap="word",
+                            height=self.show, state="disabled", cursor="arrow", spacing1=2, spacing3=4, padx=12, pady=6)
+        self.text.pack(fill="both", expand=True)
+        self.items: deque[dict] = deque(maxlen=self.show)
+        self.apply_font(size)
+        for w in (self.win, self.text, self.status, bar, mark):
+            w.bind("<ButtonPress-1>", self._start)
+            w.bind("<B1-Motion>", self._drag)
+            w.bind("<ButtonRelease-1>", self._save)
+            w.bind("<Button-3>", self._menu)
+        grip = tk.Label(body, text="◢", fg="#3A4454", bg=tks.BG, cursor="size_nw_se", font=(tks.SANS, 8))
+        grip.place(relx=1.0, rely=1.0, anchor="se")
+        grip.bind("<ButtonPress-1>", self._grip_start)
+        grip.bind("<B1-Motion>", self._grip_drag)
+        grip.bind("<ButtonRelease-1>", self._save)
+        self.menu = tk.Menu(self.win, tearoff=0, bg=tks.PANEL, fg=tks.FG, activebackground=tks.CTRL,
+                            activeforeground=tks.TEAL, bd=0, font=(tks.SANS, 9))
+        self.on_refind = None
+        self.menu.add_command(label="채팅 영역 다시 찾기", command=lambda: self.on_refind and self.on_refind())
+        self.menu.add_command(label="원문 보기", command=self._toggle_original)
+        self.menu.add_separator()
+        self.menu.add_command(label="통역 끄기", command=root.destroy)
+
+    def _default_geometry(self, size: int) -> str:
+        """채팅창 바로 위, 같은 폭."""
+        r = self.region
+        h = int(size * 4.2) * min(self.show, 6) + 40
+        return f"{r['w']}x{h}+{r['x']}+{r['y'] - h - 8}"
+
+    def apply_font(self, size: int) -> None:
+        small = max(8, size - 3)
+        self.text.configure(font=(tks.SANS, size))
+        self.text.tag_configure("meta", foreground=tks.FAINT, font=(tks.MONO, small))
+        for code, color in tks.LANG.items():
+            self.text.tag_configure("lang_" + code, foreground=color, font=(tks.MONO, small, "bold"))
+        self.text.tag_configure("ko", foreground=tks.FG)
+        self.text.tag_configure("orig", foreground=tks.FAINT, font=(tks.SANS, small))
+        self.text.tag_configure("pending", foreground=tks.DIM)
+
+    def apply(self, cfg: dict) -> None:
+        """런처에서 바꾼 설정 — 투명도·글자 크기·줄 수·원문 보기."""
+        self.cfg = cfg
+        self.win.attributes("-alpha", float(cfg.get("overlay_alpha", 0.88)))
+        self.apply_font(int(cfg.get("overlay_font", 11)))
+        show = int(cfg.get("overlay_lines", 10))
+        if show != self.show:
+            self.show = show
+            self.items = deque(self.items, maxlen=show)
+        self.render()
+
+    def reset_position(self) -> None:
+        self.win.geometry(self._default_geometry(int(self.cfg.get("overlay_font", 11))))
+        self._save()
+
+    def _toggle_original(self):
+        self.cfg["show_original"] = not self.cfg.get("show_original")
+        settings.save({"show_original": self.cfg["show_original"]})
+        self.render()
+
+    def _start(self, e):
+        self._dx, self._dy = e.x_root - self.win.winfo_x(), e.y_root - self.win.winfo_y()
+
+    def _drag(self, e):
+        self.win.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+
+    def _grip_start(self, e):
+        self._gx, self._gy = e.x_root, e.y_root
+        self._gw, self._gh = self.win.winfo_width(), self.win.winfo_height()
+        return "break"
+
+    def _grip_drag(self, e):
+        w = max(260, self._gw + e.x_root - self._gx)
+        h = max(100, self._gh + e.y_root - self._gy)
+        self.win.geometry(f"{w}x{h}")
+        return "break"
+
+    def _save(self, _e=None):
+        ui = load_ui()
+        ui["overlay"] = self.win.winfo_geometry()
+        save_ui(ui)
+
+    def _menu(self, e):
+        self.menu.tk_popup(e.x_root, e.y_root)
+
+    def add(self, item: dict):
+        self.items.append(item)
+        self.render()
+
+    def render(self):
+        self.text.configure(state="normal")
+        self.text.delete("1.0", "end")
+        for n, it in enumerate(self.items):
+            if n:
+                self.text.insert("end", "\n")
+            lang = it["lang"] if it["lang"] in tks.LANG else "en"
+            self.text.insert("end", lang.upper(), "lang_" + lang)
+            self.text.insert("end", f"  {it['name']}\n", "meta")
+            if it.get("ko"):
+                self.text.insert("end", it["ko"], "ko")
+                if self.cfg.get("show_original"):
+                    self.text.insert("end", "\n" + it["body"], "orig")
+            else:
+                self.text.insert("end", it["body"], "pending")
+        self.text.configure(state="disabled")
+        self.text.see("end")
+
+
+# ---- 본체
+class Live:
+    def __init__(self):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 물리 픽셀 좌표로(캡처·OCR 과 같게)
+        except (OSError, AttributeError):
+            pass
+        self.cfg = settings.load()
+        incoming.MODEL = self.cfg["model"]
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.region = self.initial_region()
+        self.ocr = Reader(SCALE)
+        self.overlay = Overlay(self.root, self.region, self.cfg)
+        self.overlay.on_refind = self.refind
+        self.events: queue.Queue = queue.Queue()
+        self.jobs: queue.Queue = queue.Queue()
+        self.seen = Seen()
+        self.cache: dict[str, str] = {}
+        self.stats = {"frames": 0, "changed": 0, "ocr_ms": 0, "translated": 0, "tr_s": 0.0}
+        self.first = True
+        self.running = True
+        self.note_until = 0.0
+        self.last_status = 0.0
+        self.seen_mtimes: dict = {}
+        self.win_key = None
+        paths.ensure()
+        self.trace = Trace()
+        self.frame_no = 0
+        self.msg_no = 0
+        self.orphans_seen: deque[str] = deque(maxlen=300)
+        self.last_save = 0.0
+        self.trace.write("session", region=self.region, engines=self.ocr.ready.get("engines"), interval=INTERVAL,
+                         scale=SCALE, model=incoming.MODEL)
+        threading.Thread(target=self.capture_loop, daemon=True).start()
+        threading.Thread(target=self.translate_loop, daemon=True).start()
+        self.root.after(200, self.poll)
+
+    @staticmethod
+    def initial_region() -> dict:
+        """켤 때 영역 찾기가 실패해도(로딩 중·채팅 줄 없음) 꺼지지 않는다: 지난번 영역 → 없으면 5초마다 다시."""
+        while True:
+            try:
+                return find_region()
+            except Exception:
+                good = chat_region.last_good()
+                rect = chat_region.locate(good) if good else None
+                if rect:
+                    return rect
+                time.sleep(5)
+
+    def follow_game_window(self):
+        """게임 창을 옮기면 영역도 따라가고, 창 크기(해상도)가 바뀌면 다시 찾는다."""
+        win = screen.find_game_window()
+        if not win:
+            return
+        key = (win["x"], win["y"], win["w"], win["h"])
+        prev, self.win_key = self.win_key, key
+        if prev is None or prev == key:
+            return
+        good = chat_region.last_good()
+        rect = chat_region.locate(good, win) if good else None
+        if rect:
+            self.region = rect
+            self.trace.write("region", region=rect, by="window_moved")
+        else:
+            self.refind()
+
+    def watch_launcher(self):
+        self.follow_game_window()
+        def mtime(p):
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0
+        m = mtime(paths.SETTINGS)
+        if m != self.seen_mtimes.get("settings"):
+            self.seen_mtimes["settings"] = m
+            cfg = settings.load()
+            self.overlay.apply(cfg)
+            incoming.MODEL = cfg["model"]
+        m = mtime(paths.REGION_GOOD)
+        if m != self.seen_mtimes.get("region"):
+            if self.seen_mtimes.get("region") is not None:
+                good = chat_region.last_good()
+                if good:
+                    self.region = chat_region.screen_rect(good)
+                    self.trace.write("region", region=self.region, by="launcher")
+            self.seen_mtimes["region"] = m
+        try:
+            cmd = json.loads(paths.LIVE_CMD.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cmd = None
+        if cmd and cmd.get("n") != self.seen_mtimes.get("cmd"):
+            first = "cmd" not in self.seen_mtimes
+            self.seen_mtimes["cmd"] = cmd.get("n")
+            if not first:  # 켜기 전에 남은 명령은 무시
+                if cmd.get("cmd") == "refind":
+                    self.refind()
+                elif cmd.get("cmd") == "reset_pos":
+                    self.overlay.reset_position()
+
+    def refind(self):
+        self.events.put(("status", "채팅 영역 찾는 중…"))
+        threading.Thread(target=self._refind, daemon=True).start()
+
+    def _refind(self):
+        try:
+            self.region = find_region()
+            self.trace.write("region", region=self.region)
+            self.events.put(("status", f"채팅 영역 다시 찾음: {self.region['w']}×{self.region['h']}"))
+        except Exception as e:
+            self.events.put(("status", f"영역 찾기 실패: {e}"))
+
+    FRAME_SAVE_EVERY = 3.0   # 초 — 화면 저장 간격
+    FRAME_SAVE_MAX = 300     # 하루 최대 장수
+
+    def process_frame(self, r: dict, t0: float) -> None:
+        self.frame_no += 1
+        self.stats["changed"] += 1
+        self.stats["ocr_ms"] = r.get("ms", 0)
+        lh = self.region["line_h"]
+        rows = pick_lines(r["lines"], lh)
+        orphans: list = []
+        msgs = build_messages(rows, lh, orphans)
+        queued, events = [], []
+        for m in msgs:
+            key = norm(f"{m['ch']}{m['name']}{m['body']}")
+            if not key:
+                continue
+            new, sim, near = self.seen.check(key)
+            if not new:
+                if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
+                    events.append(("dup", {"body": m["body"], "near": near, "sim": round(sim, 3), "lang": m["lang"]}))
+                continue
+            self.msg_no += 1
+            m["id"] = f"{self.trace.sid}-{self.msg_no}"
+            if self.first:
+                decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
+            elif m["lang"] == "ko":
+                decision = "skip_ko"
+            elif len(re.sub(r"\W", "", m["body"])) < 2:
+                decision = "skip_short"
+            elif is_junk(m["body"]):
+                decision = "skip_junk"
+            else:
+                decision = "queued"
+                m["t_enq"] = time.monotonic()
+                queued.append(m)
+            events.append(("msg", {"id": m["id"], "ch": m["ch"], "name": m["name"], "lang": m["lang"], "body": m["body"],
+                                   "decision": decision, "near_sim": round(sim, 3),
+                                   "rows": [{"lang": x["lang"], "x": x["x"], "y": x["y"], "feat": x["feat"], "cand": x["cand"]}
+                                            for x in m["rows"]]}))
+        for o in orphans:  # 머리를 못 알아본 줄 — 같은 글은 한 번만
+            k = norm(o["text"])
+            if k and k not in self.orphans_seen:
+                self.orphans_seen.append(k)
+                events.append(("orphan", {"text": o["text"], "lang": o["lang"], "x": o["x"], "y": o["y"], "cand": o["cand"]}))
+        frame_png = None
+        if queued and self.cfg["keep_logs"] and time.time() - self.last_save >= self.FRAME_SAVE_EVERY:
+            day_dir = paths.LOGS / "frames" / time.strftime("%Y%m%d")
+            day_dir.mkdir(parents=True, exist_ok=True)
+            if len(list(day_dir.glob("*.png"))) < self.FRAME_SAVE_MAX:
+                path = day_dir / f"{time.strftime('%H%M%S')}_{self.trace.sid}_{self.frame_no}.png"
+                if self.ocr.save_last(path):
+                    frame_png = str(path.relative_to(paths.DATA))
+                    self.last_save = time.time()
+        self.trace.write("frame", no=self.frame_no, ocr_ms=r.get("ms"), diff=r.get("diff"),
+                         loop_ms=int((time.monotonic() - t0) * 1000),
+                         rows=len(rows), msgs=len(msgs), queued=len(queued), orphans=len(orphans), png=frame_png)
+        for ev, data in events:
+            self.trace.write(ev, frame=self.frame_no, **data)
+        for m in queued:
+            self.jobs.put(m)
+        self.first = False
+
+    def capture_loop(self):
+        last_stats = time.monotonic()
+        while self.running:
+            t0 = time.monotonic()
+            if t0 - last_stats >= 60:  # 1분마다: 읽은 횟수·바뀐 횟수·밀린 번역
+                self.trace.write("stats", frames=self.stats["frames"], changed=self.stats["changed"],
+                                 translated=self.stats["translated"], backlog=self.jobs.qsize(), cache=len(self.cache))
+                last_stats = t0
+            try:
+                r = self.ocr.read(self.region)
+                self.stats["frames"] += 1
+                if not r.get("same") and "lines" in r:
+                    self.process_frame(r, t0)
+                elif r.get("error"):
+                    self.events.put(("status", "OCR 오류: " + r["error"]))
+                    self.trace.write("error", where="ocr", msg=r["error"])
+            except Exception as e:
+                self.events.put(("status", f"읽기 오류: {e}"))
+                self.trace.write("error", where="capture", msg=f"{type(e).__name__}: {e}")
+                time.sleep(2)
+            time.sleep(max(0.0, INTERVAL - (time.monotonic() - t0)))
+
+    def translate_loop(self):
+        while self.running:
+            m = self.jobs.get()
+            self.events.put(("add", m))
+            body_key = norm(m["body"])
+            t0 = time.monotonic()
+            queue_wait = t0 - m.get("t_enq", t0)
+            error = None
+            if body_key in self.cache:
+                m["ko"], sec, cached = self.cache[body_key], 0.0, True
+            else:
+                try:
+                    m["ko"], sec = incoming.translate(m["body"])
+                except Exception as e:
+                    m["ko"], sec, error = f"(번역 실패: {type(e).__name__})", 0.0, f"{type(e).__name__}: {e}"
+                self.cache[body_key] = m["ko"]
+                cached = False
+                self.stats["translated"] += 1
+                self.stats["tr_s"] = sec
+            m["wait_s"] = round(time.monotonic() - t0, 2)
+            self.trace.write("tr", id=m.get("id"), lang=m["lang"], body=m["body"], ko=m["ko"], cached=cached,
+                             queue_s=round(queue_wait, 2), llm_s=round(sec, 2), total_s=round(queue_wait + m["wait_s"], 2),
+                             backlog=self.jobs.qsize(), error=error)
+            with LOG.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ch": m["ch"], "name": m["name"], "lang": m["lang"],
+                                    "body": m["body"], "ko": m["ko"], "sec": round(sec, 2), "cached": cached},
+                                   ensure_ascii=False) + "\n")
+            self.events.put(("update", m))
+
+    def poll(self):
+        while not self.events.empty():
+            kind, arg = self.events.get()
+            if kind in ("add", "update"):
+                if kind == "add":
+                    self.overlay.add(arg)
+                else:
+                    self.overlay.render()
+            elif kind == "status":  # 알림은 6초 보이고 다시 숫자로
+                self.overlay.status.config(text=arg)
+                self.note_until = time.monotonic() + 6
+        s = self.stats
+        now = time.monotonic()
+        if s["frames"] and now >= self.note_until:
+            self.overlay.status.config(text=f"{s['translated']} · {s['tr_s']:.1f}s"
+                                            + (f" · +{self.jobs.qsize()}" if self.jobs.qsize() else ""))
+        if now - self.last_status >= 2:  # 런처 대시보드가 읽는 상태 · 런처가 바꾼 설정/영역/명령
+            self.last_status = now
+            self.watch_launcher()
+            try:
+                paths.LIVE_STATUS.write_text(json.dumps({
+                    "t": time.time(), "region": self.region, "frames": s["frames"], "changed": s["changed"],
+                    "ocr_ms": s["ocr_ms"], "translated": s["translated"], "last_s": round(s["tr_s"], 2),
+                    "backlog": self.jobs.qsize(), "model": incoming.MODEL}, ensure_ascii=False), encoding="utf-8")
+            except OSError:
+                pass
+        self.root.after(300, self.poll)
+
+    def run(self):
+        try:
+            self.root.mainloop()
+        finally:
+            self.running = False
+            self.ocr.close()
+            try:
+                paths.LIVE_STATUS.unlink()
+            except OSError:
+                pass
+
+
+def main() -> int:
+    import logging
+    paths.ensure()
+    logging.basicConfig(filename=paths.LOGS / "live.log", level=logging.INFO, encoding="utf-8",
+                        format="%(asctime)s %(levelname)s %(message)s")
+    logging.info("live start")
+    threading.excepthook = lambda a: logging.critical("thread %s", a.thread and a.thread.name,
+                                                      exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
+    try:
+        Live().run()
+        logging.info("live exit")
+    except Exception:  # 콘솔 없이(pythonw) 돌 때도 원인이 남게
+        import traceback
+        paths.ensure()
+        with (paths.LOGS / "live_error.log").open("a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%S ") + traceback.format_exc() + "\n")
+        raise
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,33 @@
+# 사용자 데이터 — 채팅 기록·화면 캡처에는 다른 플레이어의 이름과 대화가 들어 있다. 절대 올리지 않는다
+/logs/
+eval/results/
+settings.json
+chat_region*.json
+live_ui.json
+live_status.json
+live_cmd.json
+input_ui.json
+translator/live_config.json
+translator/outgoing_config.json
+
+# 이 PC 전용 실행 스크립트(사용자 경로가 들어 있다)
+*.vbs
+
+# 빌드 결과물 — 설치 파일은 GitHub Releases 에
+/build/
+/dist/
+*.spec
+
+# 중복 글꼴(애드온 폴더에 같은 파일이 있다)
+/fonts/
+
+__pycache__/
+*.py[cod]
+.venv/
+.claude/
+
+# 예전 PowerShell 실험 도구(지금은 watt/ocr.py · watt/chat_region.py 가 대신한다)
+tools/ocr_server.ps1
+tools/find_chat.ps1
+tools/chat_rate.ps1
+tools/diff_probe.ps1

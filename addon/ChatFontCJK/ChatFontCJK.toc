@@ -1,0 +1,9 @@
+## Interface: 16001, 11508, 20505
+## Title: ChatFontCJK
+## Notes: Chat font with Hangul + Chinese (Simplified/Traditional) + Cyrillic + Latin, so CJK chat no longer shows as boxes. Works with EllesmereUI Chat.
+## Author: WATT
+## Version: 0.2.0
+## OptionalDeps: EllesmereUI, EllesmereUIChat
+## SavedVariables: ChatFontCJKDB
+
+ChatFontCJK.lua

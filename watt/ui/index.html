@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WATT</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="booting">
+
+<!-- 아이콘 (24 격자, 선 1.6) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.5v3M14.5 2.5v3M9.5 18.5v3M14.5 18.5v3M2.5 9.5h3M2.5 14.5h3M18.5 9.5h3M18.5 14.5h3"/></symbol>
+  <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8 10h8M8 14h5"/></symbol>
+  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 0 10h-9a5 5 0 0 1 0-10z"/><path d="M8 10.5v3M6.5 12h3"/><path d="M15.5 11h.01M17.5 13h.01"/></symbol>
+  <symbol id="i-frame" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9.5h6M7 12.5h10M7 15.5h8"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L4 20z"/></symbol>
+  <symbol id="i-msg-lines" viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L4 20z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M10 2.5h4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.5 16a8 8 0 1 1 15 0"/><path d="m12 16 3.5-5"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-test" viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L4 20z"/><path d="m9 10.5 2 2 4-4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M9 4.5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V6A1.5 1.5 0 0 0 17 4.5h-2"/><rect x="9" y="3" width="6" height="3" rx="1"/></symbol>
+  <symbol id="i-field" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M8 10v4"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v4h4"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><path d="M5 4.5h10l4 4v11H5z"/><path d="M15 4.5v4h4M8.5 12.5h7M8.5 16h5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8.5A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-noinput" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7.5 14h9"/><path d="M3 3l18 18"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3.2 8.2 7.5 9.5 4.3-1.3 7.5-5 7.5-9.5V6z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-bg" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/><path d="M5 5l14 14M12 5l7 7M5 12l7 7"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 18 9 6l5 12M5.8 14h6.4"/><path d="M15 18l3-7 3 7M16 16h4"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></symbol>
+  <symbol id="i-tab" viewBox="0 0 24 24"><path d="M3 8.5V18a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8.5M3 8.5h18M3 8.5V6a1 1 0 0 1 1-1h6l1.5 3.5"/></symbol>
+  <symbol id="logo" viewBox="0 0 40 40"><path d="M9 4h22a6 6 0 0 1 6 6v15a6 6 0 0 1-6 6H19l-7.5 6.5V31H9a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z" fill="#C9A571"/><path d="M22.5 8.5 13 20.5h6.5L17 28.5l10-12.5h-6.5z" style="fill: var(--logo-cut, #0F131A)"/></symbol>
+  <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EAD3A2"/><stop offset="1" stop-color="#9A7446"/></linearGradient></defs>
+  <symbol id="logo-lg" viewBox="0 0 40 40"><path d="M9 4h22a6 6 0 0 1 6 6v15a6 6 0 0 1-6 6H19l-7.5 6.5V31H9a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z" fill="url(#logo-grad)"/><path d="M22.5 8.5 13 20.5h6.5L17 28.5l10-12.5h-6.5z" fill="#0B0E13"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="brand drag pywebview-drag-region"><svg class="logo-sm"><use href="#logo"/></svg><span>WATT</span></div>
+  <nav class="tabs" aria-label="메뉴">
+    <button data-view="home" class="on">홈</button>
+    <button data-view="setup">환경 설정<i class="dot-warn" id="setup-dot" hidden></i></button>
+    <button data-view="settings">번역 설정</button>
+    <button data-view="terms">용어 사전</button>
+    <button data-view="about">정보</button>
+  </nav>
+  <div class="drag pywebview-drag-region grow"></div>
+  <div class="engine" id="engine" data-tip="AI 엔진"><i class="dot"></i><span id="engine-text">…</span></div>
+  <button class="icon-btn help" id="btn-help" aria-label="도움말" data-tip="도움말 다시 보기"><svg class="ic"><use href="#i-help"/></svg></button>
+  <div class="winbtns">
+    <button id="btn-min" aria-label="최소화"><svg class="ic sm"><use href="#i-min"/></svg></button>
+    <button id="btn-close" class="close" aria-label="닫기"><svg class="ic sm"><use href="#i-x"/></svg></button>
+  </div>
+</header>
+
+<!-- 첫 실행 -->
+<section class="view" id="view-welcome">
+  <div class="welcome">
+    <div class="w-brand"><svg class="logo-xl"><use href="#logo-lg"/></svg><h1>WATT</h1></div>
+    <ol class="w-steps" aria-label="시작 순서">
+      <li><span><svg class="ic lg"><use href="#i-sliders"/></svg></span>환경 설정</li>
+      <li class="arrow" aria-hidden="true"><svg class="ic"><use href="#i-right"/></svg></li>
+      <li><span><svg class="ic lg"><use href="#i-game"/></svg></span>게임 켜기</li>
+      <li class="arrow" aria-hidden="true"><svg class="ic"><use href="#i-right"/></svg></li>
+      <li><span><svg class="ic lg bold"><use href="#i-power"/></svg></span>통역</li>
+    </ol>
+    <button class="btn primary xl" id="btn-welcome">시작</button>
+  </div>
+</section>
+
+<!-- 홈 -->
+<section class="view" id="view-home">
+  <div class="home">
+    <section class="panel ctrl-panel" aria-label="통역">
+      <button class="power" id="power" aria-label="통역 시작" aria-pressed="false"><span><svg class="ic"><use href="#i-power"/></svg></span></button>
+      <div class="group rows" role="group" aria-label="조작">
+        <div class="row" id="row-input">
+          <svg class="ic"><use href="#i-kbd"/></svg>
+          <span class="grow">보내기 입력창<small class="mono">Ctrl+Shift+K</small></span>
+          <button class="switch" id="sw-input" role="switch" aria-checked="false" aria-label="보내기 입력창"></button>
+        </div>
+        <div class="row" id="row-orig">
+          <svg class="ic"><use href="#i-eye"/></svg>
+          <span class="grow">원문 보기</span>
+          <button class="switch" id="sw-orig" role="switch" aria-checked="false" aria-label="원문 보기"></button>
+        </div>
+        <div class="row" id="row-region">
+          <svg class="ic"><use href="#i-target"/></svg>
+          <span class="grow">채팅 영역</span>
+          <button class="icon-btn sq" id="btn-refind" aria-label="채팅 영역 다시 찾기" data-tip="채팅 영역 다시 찾기"><svg class="ic sm"><use href="#i-refresh"/></svg></button>
+        </div>
+      </div>
+      <div class="group metrics" role="group" aria-label="오늘">
+        <div><b class="mono" id="m-count">0</b><small>오늘 번역</small></div>
+        <div><b class="mono" id="m-latency">-</b><small>표시까지</small></div>
+        <div><b class="mono" id="m-read">-</b><small>읽기</small></div>
+      </div>
+      <div class="status-grid" role="group" aria-label="상태">
+        <div class="stat" id="st-ai"><svg class="ic"><use href="#i-chip"/></svg><div><small>AI 엔진<i class="dot"></i></small><b>-</b></div></div>
+        <div class="stat" id="st-ocr"><svg class="ic"><use href="#i-ocr"/></svg><div><small>글자 인식<i class="dot"></i></small><b>-</b></div></div>
+        <div class="stat" id="st-game"><svg class="ic"><use href="#i-game"/></svg><div><small>게임<i class="dot"></i></small><b>-</b></div></div>
+        <div class="stat" id="st-region"><svg class="ic"><use href="#i-frame"/></svg><div><small>채팅 영역<i class="dot"></i></small><b>-</b></div></div>
+      </div>
+    </section>
+    <section class="panel feed" aria-label="최근 번역">
+      <div class="lang-tabs" role="tablist" aria-label="언어">
+        <button role="tab" data-lang="all" class="on">전체</button>
+        <button role="tab" data-lang="en" class="mono en">EN</button>
+        <button role="tab" data-lang="zh" class="mono zh">ZH</button>
+        <button role="tab" data-lang="ru" class="mono ru">RU</button>
+      </div>
+      <div class="feed-list" id="feed"></div>
+      <div class="empty" id="feed-empty"><svg class="ic xl thin"><use href="#i-msg-lines"/></svg><span>번역 없음</span></div>
+    </section>
+  </div>
+</section>
+
+<!-- 환경 설정 -->
+<section class="view" id="view-setup">
+  <div class="setup">
+    <nav class="rail" aria-label="단계">
+      <div class="rail-progress"><div class="bar"><i id="setup-bar"></i></div><span class="mono" id="setup-count">0/7</span></div>
+      <ol id="steps"></ol>
+    </nav>
+    <main class="step-detail">
+      <h1 class="step-title"><span class="step-icon"><svg class="ic"><use id="step-icon" href="#i-pc"/></svg></span><span id="step-name"></span>
+        <span class="grow"></span><span id="step-action"></span></h1>
+      <div class="step-body" id="step-body"></div>
+      <div class="step-nav">
+        <button class="icon-btn lg" id="step-prev" aria-label="이전"><svg class="ic"><use href="#i-left"/></svg></button>
+        <button class="btn" id="step-next">다음<svg class="ic sm"><use href="#i-right"/></svg></button>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- 번역 설정 -->
+<section class="view" id="view-settings">
+  <div class="settings">
+    <div class="col">
+      <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-kbd"/></svg>보내기</h2>
+        <div class="field"><span>언어</span>
+          <div class="seg mono" id="set-lang" role="radiogroup" aria-label="언어">
+            <button data-v="en">EN</button><button data-v="zh">ZH</button><button data-v="ru">RU</button><button data-v="ja">JA</button>
+          </div></div>
+        <div class="field"><span>넣는 곳</span>
+          <div class="seg" id="set-mode" role="radiogroup" aria-label="넣는 곳">
+            <button data-v="clipboard" data-tip="클립보드에 복사"><svg class="ic sm"><use href="#i-clip"/></svg>클립보드</button>
+            <button data-v="paste" data-tip="열린 채팅 입력칸에 넣기 · Enter는 직접"><svg class="ic sm"><use href="#i-field"/></svg>입력칸</button>
+          </div></div>
+        <div class="field"><span>단축키</span><span class="keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>K</kbd></span></div>
+      </section>
+      <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-game"/></svg>게임</h2>
+        <div class="field"><span>버전</span><label class="select"><select id="set-game" aria-label="게임 버전"></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
+        <div class="field"><span>폴더</span><span class="inline path-row"><span class="path mono" id="set-gamedir"></span>
+          <button class="icon-btn sq" id="set-pickgame" aria-label="게임 폴더 바꾸기" data-tip="게임 폴더 직접 고르기"><svg class="ic sm"><use href="#i-folder"/></svg></button></span></div>
+      </section>
+      <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-chip"/></svg>AI 엔진</h2>
+        <div class="field"><span>모델</span><label class="select mono"><select id="set-model"></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
+        <div class="field" data-tip="첫 번역이 기다리지 않게 모델을 미리 올려 둡니다"><span>미리 올리기</span><button class="switch" id="set-preload" role="switch" aria-label="미리 올리기"></button></div>
+      </section>
+    </div>
+    <div class="col">
+      <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-frame"/></svg>통역 창</h2>
+        <div class="field"><span>글자 크기</span><span class="range"><input type="range" id="set-font" min="9" max="18" step="1"><output class="mono" id="out-font"></output></span></div>
+        <div class="field"><span>투명도</span><span class="range"><input type="range" id="set-alpha" min="60" max="100" step="2"><output class="mono" id="out-alpha"></output></span></div>
+        <div class="field"><span>메시지 수</span><span class="range"><input type="range" id="set-lines" min="4" max="20" step="1"><output class="mono" id="out-lines"></output></span></div>
+        <div class="field"><span>원문</span><button class="switch" id="set-orig" role="switch" aria-label="원문 보기"></button></div>
+        <div class="field"><span>위치</span><button class="icon-btn sq" id="set-resetpos" aria-label="처음 위치로" data-tip="채팅창 바로 위로 되돌리기"><svg class="ic sm"><use href="#i-reset"/></svg></button></div>
+      </section>
+      <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-log"/></svg>기록</h2>
+        <div class="field" data-tip="읽은 줄과 번역을 이 PC에만 남깁니다"><span>저장</span>
+          <span class="inline"><button class="icon-btn sq" id="set-openlogs" aria-label="기록 폴더 열기" data-tip="기록 폴더 열기"><svg class="ic sm"><use href="#i-folder"/></svg></button>
+          <button class="switch" id="set-logs" role="switch" aria-label="기록 저장"></button></span></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<!-- 용어 사전 -->
+<section class="view" id="view-terms">
+  <div class="terms">
+    <div class="terms-head">
+      <div class="cat-tabs" id="cats" role="tablist" aria-label="분류"></div>
+      <label class="search"><svg class="ic sm"><use href="#i-search"/></svg><input id="term-q" placeholder="통곡, WC, 哀嚎" aria-label="용어 검색"></label>
+    </div>
+    <div class="terms-table">
+      <div class="tr th"><span>한국 이름</span><span>한국 줄임말</span><span>영어</span><span>중국어</span><span>러시아어</span></div>
+      <div id="term-rows"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 정보 -->
+<section class="view" id="view-about">
+  <div class="about">
+    <div class="about-head"><svg class="logo-lg"><use href="#logo-lg"/></svg>
+      <div><h1>WATT</h1><div class="mono muted" id="about-ver">0.1.0 · WoW AI Translation Tool</div></div></div>
+    <div class="promises">
+      <div><span><svg class="ic"><use href="#i-lock"/></svg></span>PC 안에서만 번역</div>
+      <div><span><svg class="ic"><use href="#i-eye"/></svg></span>화면만 읽음</div>
+      <div><span><svg class="ic"><use href="#i-noinput"/></svg></span>자동 입력 없음</div>
+    </div>
+    <div class="libs">
+      <div><span>Ollama</span><span class="mono">MIT</span></div>
+      <div><span>Gemma 4</span><span class="mono">Gemma Terms</span></div>
+      <div><span>Windows OCR</span><span class="mono">Windows</span></div>
+      <div><span>Sarasa Gothic</span><span class="mono">OFL 1.1</span></div>
+      <div><span>IBM Plex</span><span class="mono">OFL 1.1</span></div>
+      <div><span>pywebview</span><span class="mono">BSD-3</span></div>
+    </div>
+    <p class="tm">World of Warcraft는 Blizzard Entertainment의 상표입니다. WATT는 비공식 도구입니다.</p>
+  </div>
+</section>
+
+<!-- 온보딩 -->
+<div class="coach" id="coach" hidden>
+  <div class="spot" id="coach-spot"></div>
+  <div class="bubble" id="coach-bubble" role="dialog" aria-live="polite">
+    <i class="arrow"></i>
+    <b id="coach-title"></b>
+    <p id="coach-text"></p>
+    <div class="coach-foot"><span class="dots" id="coach-dots"></span>
+      <span><button class="link" id="coach-skip">건너뛰기</button><button class="btn dark sm" id="coach-next">다음</button></span></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
