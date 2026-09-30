@@ -39,6 +39,8 @@ def _logged(fn):
             if dt > 1:
                 log.info("api %s %.1fs", fn.__name__, dt)
     return wrap
+LINKS = {"https://ai.google.dev/gemma/terms",  # Gemma 이용 약관
+         "https://github.com/ryusnews/watt"}
 MUTEX_NAME = "Local\\WATT_launcher_single_instance"
 
 
@@ -392,7 +394,16 @@ class Api:
             self._live_cmd("reset_pos")
         return True
 
-    # ---- 창 · 폴더
+    # ---- 창 · 폴더 · 링크
+    @_logged
+    def open_url(self, url: str) -> bool:
+        """정해 둔 주소만 기본 브라우저로 — 앱 창 안에서 링크를 열면 화면이 그 페이지로 바뀐다."""
+        if url not in LINKS:
+            log.warning("blocked url %s", url)
+            return False
+        os.startfile(url)
+        return True
+
     @_logged
     def open_folder(self, which: str = "data") -> bool:
         target = {"data": paths.DATA, "logs": paths.LOGS}.get(which, paths.DATA)

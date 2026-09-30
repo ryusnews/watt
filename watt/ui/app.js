@@ -233,7 +233,8 @@ const DETAIL = {
     const action = p || st.busy.includes('pull') ? ''
       : !m.installed ? `<button class="btn primary" data-act="pull_model">${icon('i-download', 'sm')}받기</button>`
       : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>` : '<span class="badge ok">사용 중</span>';
-    return [`<div class="models">${cards}</div>${box}`, action];
+    const terms = `<p class="terms-line">받으면 Google <a href="#" data-url="https://ai.google.dev/gemma/terms">Gemma 이용 약관</a>에 동의하는 것으로 봅니다</p>`;
+    return [`<div class="models">${cards}</div>${terms}${box}`, action];
   },
   addon() {
     const games = S.games || [];
@@ -435,6 +436,11 @@ function bind() {
   // 용어 사전
   $('#cats').onclick = (e) => { const b = e.target.closest('[data-cat]'); if (b) { S.termCat = b.dataset.cat; renderTerms(); } };
   $('#term-q').oninput = () => renderTerms();
+  // 바깥 링크는 기본 브라우저로(정해 둔 주소만 — watt/app.py LINKS)
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-url]'); if (!a) return;
+    e.preventDefault(); call('open_url', a.dataset.url);
+  });
   // 온보딩
   $('#coach-next').onclick = () => { if (coachStep < COACH.length - 1) { coachStep++; coach(false); } else coachEnd(); };
   $('#coach-skip').onclick = coachEnd;
@@ -496,7 +502,7 @@ function mockApi() {
     get_terms: () => fetch('../../translator/wow_terms.json').then((r) => r.json()).then((d) => d.terms).catch(() => []),
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
-    refind: () => ok(true), reset_overlay: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
+    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
