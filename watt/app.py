@@ -508,7 +508,8 @@ class Api:
         if not rect:
             return []
         r = ocr.Reader(2).read(rect, force=True)
-        msgs = live.build_messages(live.pick_lines(r.get("lines", {}), rect["line_h"]), rect["line_h"])
+        rows = live.pick_lines(r.get("lines", {}), rect["line_h"])
+        msgs = live.build_messages(rows, live.line_pitch(rows, rect["line_h"]))
         foreign = [m for m in msgs if m["lang"] != "ko" and m["name"] and len(re.sub(r"\W", "", m["body"])) >= 2
                    and not live.is_junk(m["body"])]
         ads = AdFilter()

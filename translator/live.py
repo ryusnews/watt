@@ -210,6 +210,17 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
     return out
 
 
+def line_pitch(rows: list[dict], default: int) -> int:
+    """화면의 실제 줄 간격(이웃한 줄의 y 차이 중앙값). 저장된 줄 높이는 영역을 찾을 때 잰 값이라, 채팅 글자 크기를 바꾸면
+    (14 → 16pt) 뒷줄이 떨어져 나간다 — 매 화면 다시 잰다."""
+    ys = sorted(r["y"] for r in rows)
+    gaps = [b - a for a, b in zip(ys, ys[1:]) if default * 0.6 <= b - a <= default * 3]
+    if len(gaps) < 3:
+        return default
+    gaps.sort()
+    return max(8, int(gaps[len(gaps) // 2]))
+
+
 def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -> list[dict]:
     """머리([채널] [이름]:)로 시작하는 줄 + 이어지는 줄바꿈 줄 = 메시지. 머리 없는 맨 위 조각·시스템 메시지는 버린다.
     orphans 를 주면 버린 줄(머리도 아니고 이어지는 줄도 아닌 것)을 담는다 — 머리 인식 실패를 찾는 데 쓴다."""
@@ -621,6 +632,7 @@ class Live:
         self.stats["ocr_ms"] = r.get("ms", 0)
         lh = self.region["line_h"]
         rows = pick_lines(r["lines"], lh)
+        lh = line_pitch(rows, lh)
         orphans: list = []
         msgs = build_messages(rows, lh, orphans)
         queued, events = [], []
