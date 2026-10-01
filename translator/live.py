@@ -272,8 +272,11 @@ class Trace:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.sid = time.strftime("%H%M%S")
         self.lock = threading.Lock()
+        self.enabled = True  # 번역 설정 '품질 개선용 기록'을 끄면 남기지 않는다
 
     def write(self, ev: str, **kw) -> None:
+        if not self.enabled:
+            return
         now = time.time()
         rec = {"t": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)) + f".{int(now * 1000) % 1000:03d}",
                "sid": self.sid, "ev": ev, **kw}
@@ -496,6 +499,8 @@ class Live:
         if m != self.seen_mtimes.get("settings"):
             self.seen_mtimes["settings"] = m
             cfg = settings.load()
+            self.cfg = cfg
+            self.trace.enabled = bool(cfg["keep_logs"])
             self.overlay.apply(cfg)
             incoming.MODEL = cfg["model"]
         m = mtime(paths.REGION_GOOD)
@@ -687,8 +692,8 @@ class Live:
 def main() -> int:
     import logging
     paths.ensure()
-    logging.basicConfig(filename=paths.LOGS / "live.log", level=logging.INFO, encoding="utf-8",
-                        format="%(asctime)s %(levelname)s %(message)s")
+    from watt import housekeeping
+    logging.basicConfig(level=logging.INFO, handlers=[housekeeping.file_handler("live.log")])
     logging.info("live start")
     threading.excepthook = lambda a: logging.critical("thread %s", a.thread and a.thread.name,
                                                       exc_info=(a.exc_type, a.exc_value, a.exc_traceback))

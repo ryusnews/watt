@@ -18,7 +18,7 @@ from collections import deque
 
 import webview
 
-from . import APP_FULL, APP_NAME, VERSION, chat_region, ocr, paths, screen, settings, system, update
+from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, screen, settings, system, update
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 log = logging.getLogger("watt")
@@ -358,6 +358,14 @@ class Api:
         return self._task("cleanup", work)
 
     @_logged
+    def get_storage(self) -> dict:
+        return housekeeping.usage()
+
+    @_logged
+    def clear_logs(self) -> dict:
+        return housekeeping.clear()
+
+    @_logged
     def use_model(self, name: str) -> dict:
         return settings.save({"model": name})
 
@@ -547,8 +555,8 @@ def main() -> int:
     if not _single_instance():
         return 0
     paths.ensure()
-    logging.basicConfig(filename=paths.LOGS / "app.log", level=logging.INFO, encoding="utf-8",
-                        format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.basicConfig(level=logging.INFO, handlers=[housekeeping.file_handler("app.log")])
+    threading.Thread(target=housekeeping.prune, daemon=True).start()  # 오래된 기록·다 쓴 설치 파일
     log.info("start %s frozen=%s portable=%s data=%s", VERSION, paths.FROZEN, paths.PORTABLE, paths.DATA)
     if paths.PORTABLE:
         update.cleanup_stage()  # 지난 업데이트에서 풀어 둔 새 버전 파일

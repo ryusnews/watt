@@ -135,6 +135,7 @@ const STEPS = [
 const TASK_OF = { ocr: 'ocr', ollama: 'ollama', model: 'pull', region: 'region', test: 'test' };
 function pct(p) { return p.total ? Math.floor((p.done / p.total) * 100) : 0; }
 function gb(n) { return (n / 1024 ** 3).toFixed(1); }
+function mb(n) { return n >= 1024 ** 3 ? `${gb(n)}GB` : `${Math.max(0, n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)}MB`; }
 
 function defaultGame(games) {
   const saved = S.state && S.state.settings.game_dir;
@@ -333,6 +334,7 @@ function renderSettings() {
   if (!names.includes(c.model)) names.unshift(c.model);
   sel.innerHTML = names.map((n) => `<option ${n === c.model ? 'selected' : ''}>${esc(n)}</option>`).join('');
   setSwitch('#set-update', c.update_check);
+  call('get_storage').then((u) => { $('#set-usage').textContent = mb(u.total); $('#set-usage').dataset.tip = `화면 캡처 ${mb(u.frames)} · 추적 ${mb(u.trace)} · 받은 파일 ${mb(u.downloads)}`; }).catch(() => {});
   setSwitch('#set-preload', c.preload); setSwitch('#set-orig', c.show_original); setSwitch('#set-logs', c.keep_logs);
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
   $('#set-alpha').value = Math.round(c.overlay_alpha * 100); $('#out-alpha').textContent = Math.round(c.overlay_alpha * 100) + '%';
@@ -495,6 +497,10 @@ function bind() {
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
   $('#set-resetpos').onclick = async () => { await call('reset_overlay'); toast('통역 창을 채팅창 위로 옮겼습니다', 'ok'); };
   $('#set-openlogs').onclick = () => call('open_folder', 'logs');
+  $('#set-clear').onclick = async () => {
+    if (!(await confirmBox('기록 지우기', '화면 캡처 · 추적 기록 · 번역 기록 · 받은 파일. 설정은 남습니다'))) return;
+    const r = await call('clear_logs'); toast(`${mb(r.freed)} 비웠습니다`, 'ok'); renderSettings();
+  };
   $('#set-update').onclick = () => { save({ update_check: !S.state.settings.update_check }); renderSettings(); };
   $('#btn-update').onclick = () => applyUpdate();
   $('#btn-check-update').onclick = () => checkUpdate(true);
@@ -583,7 +589,8 @@ function mockApi() {
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),
     check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }),
-    cleanup_installed: () => ok({ started: true }), use_model: (n) => ok(Object.assign(settings, { model: n })),
+    cleanup_installed: () => ok({ started: true }),
+    get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
   };

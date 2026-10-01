@@ -259,6 +259,7 @@ def ollama_install(progress=None, cancel=None) -> dict:
     had = bool(ollama_exe())
     setup = download(OLLAMA_SETUP_URL, paths.DOWNLOADS / "OllamaSetup.exe", progress, cancel)
     subprocess.run([str(setup)], check=False)  # 사용자 영역 설치(관리자 권한 불필요). 끝나면 Ollama 가 스스로 켜진다
+    setup.unlink(missing_ok=True)  # 다 쓴 설치 파일
     if not had and ollama_exe():
         remember(paths.INSTALLED_OLLAMA, str(Path(ollama_exe()).parent))
     for _ in range(40):
