@@ -431,10 +431,10 @@ class Api:
             rows, note = [], None
             chat = self._chat_now()
             if chat is None:
-                note = "게임이 켜져 있지 않아 예시 문장으로 시험했습니다"
+                note = "게임이 꺼져 있음"
             elif not chat:
-                note = "채팅창에 외국어가 없어 예시 문장으로 시험했습니다"
-            for m in (chat or [{"ch": "", "name": "", "body": "哀嚎4=1 来ms", "lang": "zh"}]):
+                note = "지금 외국어 없음"
+            for m in chat or []:  # 예시 문장은 쓰지 않는다 — 입력한 말의 번역으로 오해했다
                 ko, sec = incoming.translate(m["body"])
                 rows.append({"dir": "in", "lang": m["lang"], "who": m["name"], "src": m["body"], "dst": ko, "sec": round(sec, 1)})
             src = (ko_text or "").strip() or "성불 탱 구해요 귓 주세요"

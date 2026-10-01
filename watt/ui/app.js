@@ -279,8 +279,10 @@ const DETAIL = {
     if (res && res.rows) {
       const row = (r, i) => `<div class="result"><span class="dir ${esc(r.lang)}">${r.dir === 'in' ? esc((r.lang || '').toUpperCase()) : 'KO→' + esc((r.lang || '').toUpperCase())}</span>
         <div>${r.dir === 'out' && i > 0 ? '' : `<div class="src">${r.who ? `<b>${esc(r.who)}</b> ` : ''}${esc(r.src)}</div>`}<div class="dst">${esc(r.dst)}</div></div><span class="sec">${r.sec}s</span></div>`;
-      out = `${res.note ? `<div class="note-line">${icon('i-msg', 'sm')}${esc(res.note)}</div>` : ''}
-        <div class="results">${res.rows.filter((r) => r.dir === 'in').map(row).join('')}</div>
+      const ins = res.rows.filter((r) => r.dir === 'in');
+      out = `<div class="sec-label">${icon('i-msg', 'sm')}받기 · 채팅창${res.note ? ` <span class="muted">— ${esc(res.note)}</span>` : ''}</div>
+        ${ins.length ? `<div class="results">${ins.map(row).join('')}</div>` : ''}
+        <div class="sec-label">${icon('i-kbd', 'sm')}보내기</div>
         <div class="results">${res.rows.filter((r) => r.dir === 'out').map(row).join('')}</div>`;
     } else if (res && res.error) out = `<div class="err-text">${esc(res.error)}</div>`;
     const action = `<button class="btn primary" data-act="test_translate" ${run ? 'disabled' : ''} data-tip="게임 채팅창의 최근 외국어 3줄 · 보낼 말을 영어 · 중국어 · 러시아어 · 일본어로">${icon('i-test', 'sm')}${run ? '번역 중' : '시험'}</button>`;
