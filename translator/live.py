@@ -1077,6 +1077,20 @@ class Live:
                              backlog=self.jobs.qsize(), error=error)
             self.log_item(m, m["ko"], round(sec, 2), cached)
             self.events.put(("update", m))
+            if not m.get("pass"):
+                now = time.monotonic()
+                self.recent_totals = [(t_, s_) for t_, s_ in getattr(self, "recent_totals", []) if now - t_ < 60]
+                self.recent_totals.append((now, queue_wait + m["wait_s"]))
+
+    def slow(self) -> float | None:
+        """번역이 밀리나 — 최근 1분에 번역 6건↑이고 '표시까지' 가운데 값이 4초↑면 그 값(초). 바쁜 채널에서 큰 모델이
+        한 문장씩 처리해 줄이 쌓였다(12b: 가운데 2.1초, 최대 12.9초 / E4B: 0.38초, 2026-10-02)."""
+        now = time.monotonic()
+        xs = sorted(s_ for t_, s_ in getattr(self, "recent_totals", []) if now - t_ < 60)
+        if len(xs) < 6:
+            return None
+        mid = xs[len(xs) // 2]
+        return round(mid, 1) if mid >= 4 else None
 
     @staticmethod
     def src_tag(m: dict, src: str) -> str | None:
@@ -1121,7 +1135,8 @@ class Live:
                     "ocr_ms": s["ocr_ms"], "translated": s["translated"], "last_s": round(s["tr_s"], 2),
                     "ai": sorted(self.ocr.ocr.ai.rec) if self.ocr.ocr.ai else [],
                     "ai_gpu": bool(self.ocr.ocr.ai and self.ocr.ocr.ai.gpu), "ai_error": self.ocr.ocr.ai_error or None,
-                    "backlog": self.jobs.qsize(), "model": incoming.MODEL}, ensure_ascii=False), encoding="utf-8")
+                    "backlog": self.jobs.qsize(), "model": incoming.MODEL, "slow": self.slow()}, ensure_ascii=False),
+                    encoding="utf-8")
             except OSError:
                 pass
         self.root.after(300, self.poll)

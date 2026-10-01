@@ -154,8 +154,23 @@ class Api:
         """홈 화면이 1.5초마다 부르는 가벼운 상태."""
         feed = self.get_feed(30)
         today, secs = self._today_stats()
-        return {"running": {"live": self._alive("live"), "input": self._alive("input")}, "live": self._live_status(),
-                "feed": feed, "today": today, "avg_sec": round(sorted(secs)[len(secs) // 2], 1) if secs else None}  # 중앙값 — 모델 올리는 첫 번역 몇 초에 끌려가지 않게
+        st = self._live_status()
+        return {"running": {"live": self._alive("live"), "input": self._alive("input")}, "live": st,
+                "feed": feed, "today": today, "avg_sec": round(sorted(secs)[len(secs) // 2], 1) if secs else None,
+                "lighter": self._lighter_model(st["model"]) if st and st.get("slow") else None}
+
+    @staticmethod
+    def _lighter_model(current: str) -> dict | None:
+        """지금 모델보다 가벼운 모델(system.MODELS 순서) 중 받아 둔 것 하나 — 없으면 바로 다음 것(받아야 함)."""
+        names = [m["name"] for m in system.MODELS]
+        if current not in names:
+            return None
+        lighter = system.MODELS[names.index(current) + 1:]
+        if not lighter:
+            return None
+        have = {m["name"] for m in system.ollama_status().get("models", [])}
+        pick = next((m for m in lighter if m["name"] in have), lighter[0])
+        return {"name": pick["name"], "label": pick["label"], "installed": pick["name"] in have}  # 중앙값 — 모델 올리는 첫 번역 몇 초에 끌려가지 않게
 
     def _today_stats(self) -> tuple[int, list[float]]:
         """오늘 번역 건수와 최근 20건 번역 시간 — live.jsonl 이 바뀌었을 때만 다시 센다."""

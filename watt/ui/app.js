@@ -107,6 +107,23 @@ async function refresh(full = false) {
   if (full || !S.state) S.state = await call('get_state', false);
   S.live = await call('get_live');
   renderAll();
+  suggestLighter();
+}
+
+/* 번역이 밀리면(최근 1분 가운데 4초↑) 더 가벼운 모델을 한 번 권한다 — 같은 모델로는 한 시간에 한 번만 */
+async function suggestLighter() {
+  const l = S.live && S.live.lighter, st = S.live && S.live.live;
+  if (!l || !st || S.asking) return;
+  const key = `${st.model}>${l.name}`;
+  if (S.suggested && S.suggested[key] && Date.now() - S.suggested[key] < 3600e3) return;
+  (S.suggested = S.suggested || {})[key] = Date.now();
+  S.asking = true;
+  const ok = await confirmBox(`번역이 밀립니다 · ${st.slow}초`, l.installed ? `${l.label} 로 바꿀까요? 더 빠르고 조금 덜 정확합니다`
+    : `${l.label} 을(를) 받아 바꿀까요? 환경 설정 → 번역 모델에서 받습니다`, l.installed ? '바꾸기' : '환경 설정으로', '그대로', false);
+  S.asking = false;
+  if (!ok) return;
+  if (l.installed) { await call('use_model', l.name); toast(`${l.label} 로 바꿨습니다`, 'ok'); refresh(true); }
+  else { show('setup'); S.step = Math.max(0, STEPS.findIndex((s) => s.key === 'model')); renderSetup(); }
 }
 function renderAll() { renderEngine(); renderHome(); renderUpdate(); if (S.view === 'setup') renderSetup(); $('#setup-dot').hidden = setupDone(); }
 function setupDone() {
