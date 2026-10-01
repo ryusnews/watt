@@ -521,7 +521,7 @@ function bind() {
   window.addEventListener('error', (e) => report(`${e.message} @${e.filename}:${e.lineno}`));
   window.addEventListener('unhandledrejection', (e) => report(`promise: ${e.reason && (e.reason.message || e.reason)}`));
   await refresh(true);
-  $('#about-ver').textContent = `${S.state.app.version} · ${S.state.app.full}`;
+  $('#about-ver').textContent = `${S.state.app.version} · ${S.state.app.portable ? '포터블' : '설치판'} · ${S.state.app.full}`;
   const c = S.state.settings;
   show(!c.welcomed ? 'welcome' : setupDone() ? 'home' : 'setup');
   if (c.welcomed && !setupDone()) S.step = Math.max(0, STEPS.findIndex((s) => stepState(s.key) !== 'done'));

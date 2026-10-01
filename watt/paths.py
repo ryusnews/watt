@@ -1,8 +1,9 @@
 """파일 위치.
 
 RES  — 프로그램과 함께 배포되는 읽기 전용 파일(ui, 용어 사전, 애드온). exe 로 묶이면 압축이 풀린 폴더.
-DATA — 사용자별로 쓰는 파일(설정·기록·채팅 영역). 설치본은 %LOCALAPPDATA%\\WATT, 개발 중에는 프로젝트 폴더
-       (예전 logs/·chat_region.json 을 그대로 쓰도록).
+DATA — 사용자별로 쓰는 파일(설정·기록·채팅 영역).
+       포터블(WATT.exe 옆에 portable.txt) → 그 폴더 안 data\\ (폴더에 쓸 수 없으면 아래로)
+       설치판 → %LOCALAPPDATA%\\WATT · 개발 중 → 프로젝트 폴더(예전 logs/·chat_region.json 을 그대로 쓰도록)
 """
 import os
 import sys
@@ -10,7 +11,22 @@ from pathlib import Path
 
 FROZEN = getattr(sys, "frozen", False)
 RES = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-DATA = Path(os.environ.get("WATT_HOME") or (Path(os.environ["LOCALAPPDATA"]) / "WATT" if FROZEN else RES))
+APP_DIR = Path(sys.executable).resolve().parent if FROZEN else None  # WATT.exe 가 있는 폴더
+PORTABLE = bool(FROZEN and (APP_DIR / "portable.txt").exists())
+
+
+def _data_dir() -> Path:
+    if os.environ.get("WATT_HOME"):
+        return Path(os.environ["WATT_HOME"])
+    if PORTABLE and os.access(APP_DIR, os.W_OK):
+        return APP_DIR / "data"
+    if FROZEN:
+        return Path(os.environ["LOCALAPPDATA"]) / "WATT"
+    return RES
+
+
+DATA = _data_dir()
+UPDATE_STAGE = DATA / "update"  # 포터블 업데이트: 새 버전을 여기에 풀었다가 덮어쓴다
 
 UI = RES / "watt" / "ui"
 ADDON = RES / "addon" / "ChatFontCJK"

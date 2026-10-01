@@ -1,16 +1,17 @@
-"""배포판 만들기 — WATT.exe(PyInstaller, 폴더형) + 설치 프로그램(Inno Setup).
+"""배포판 만들기 — 기본은 포터블(zip). 설치판(Inno Setup)은 필요할 때만 --installer.
 
-python tools/build.py            전부
-python tools/build.py --no-installer
-결과: dist/WATT/WATT.exe, dist/installer/WATT-Setup-<버전>.exe
+python tools/build.py              포터블: dist/portable/WATT-Portable-<버전>.zip
+python tools/build.py --installer  포터블 + 설치판: dist/installer/WATT-Setup-<버전>.exe
 """
 import argparse
+import json
 import os
 import shutil
 import struct
 import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -133,6 +134,39 @@ def selftest() -> None:
         raise SystemExit("selftest 실패")
 
 
+PORTABLE_NOTE = ("이 파일이 있으면 WATT 는 설정·기록을 이 폴더 안 data 에 저장합니다(포터블).\r\n"
+                 "지우면 설치판처럼 %LOCALAPPDATA%\\WATT 를 씁니다.\r\n")
+
+
+def portable_zip() -> Path:
+    """dist/WATT + portable.txt → WATT-Portable-<버전>.zip (안에 WATT 폴더 하나)."""
+    out = DIST / "portable" / f"WATT-Portable-{VERSION}.zip"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.unlink(missing_ok=True)
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for f in sorted(APP.rglob("*")):
+            if f.is_file():
+                z.write(f, Path("WATT") / f.relative_to(APP))
+        z.writestr("WATT/portable.txt", PORTABLE_NOTE.encode("utf-8-sig"))
+    return out
+
+
+def portable_selftest(zip_path: Path) -> None:
+    """zip 을 실제로 풀어 WATT_HOME 없이 돌려 본다 — 포터블로 알아보고 data 를 폴더 안에 두는지."""
+    root = BUILD / "portable_test"
+    shutil.rmtree(root, ignore_errors=True)
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(root)
+    exe = root / "WATT" / "WATT.exe"
+    env = {k: v for k, v in os.environ.items() if k != "WATT_HOME"}
+    code = subprocess.run([str(exe), "--role", "selftest"], env=env, timeout=120).returncode
+    report = json.loads((root / "WATT" / "data" / "logs" / "selftest.json").read_text(encoding="utf-8"))
+    print(f"portable selftest exit={code} portable={report['portable']} data={report['data_dir']}")
+    if code != 0 or not report["portable"] or Path(report["data_dir"]) != (root / "WATT" / "data").resolve():
+        raise SystemExit("포터블 selftest 실패")
+    shutil.rmtree(root, ignore_errors=True)
+
+
 def installer() -> Path:
     iscc = next((p for p in ISCC if p.exists()), None)
     if not iscc:
@@ -143,7 +177,7 @@ def installer() -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--no-installer", action="store_true")
+    ap.add_argument("--installer", action="store_true", help="설치판(Inno Setup)도 만든다 — 필요할 때만")
     args = ap.parse_args()
     step("아이콘·마법사 그림")
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_assets.py")], check=True)
@@ -155,7 +189,11 @@ def main() -> int:
     selftest()
     size = sum(f.stat().st_size for f in APP.rglob("*") if f.is_file())
     print(f"dist/WATT: {size / 1024 ** 2:.0f} MB")
-    if not args.no_installer:
+    step("포터블 (zip)")
+    z = portable_zip()
+    print(f"{z} {z.stat().st_size / 1024 ** 2:.1f} MB")
+    portable_selftest(z)
+    if args.installer:
         step("설치 프로그램 (Inno Setup)")
         out = installer()
         print(f"{out} {out.stat().st_size / 1024 ** 2:.1f} MB")

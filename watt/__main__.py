@@ -4,6 +4,7 @@ WATT.exe                  런처(설정 마법사·대시보드)
 WATT.exe --role live      통역 창(채팅 읽기 → 번역 → 게임 위 창)
 WATT.exe --role input     보내기 입력창(Ctrl+Shift+K)
 WATT.exe --role selftest  묶음(exe)이 제대로 됐는지 점검 → logs/selftest.json (창을 띄우지 않는다)
+WATT.exe --role apply-update --target <폴더> --pid <n>   포터블 업데이트(새 버전 쪽에서 옛 폴더를 덮어쓴다)
 개발 중: python -m watt [--role ...]
 """
 import argparse
@@ -17,7 +18,8 @@ def selftest() -> int:
     import traceback
 
     from watt import paths
-    report, ok = {"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "frozen": paths.FROZEN, "res": str(paths.RES)}, True
+    report, ok = {"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "frozen": paths.FROZEN, "portable": paths.PORTABLE,
+                  "res": str(paths.RES), "data_dir": str(paths.DATA)}, True
 
     def check(name, fn):
         nonlocal ok
@@ -83,8 +85,13 @@ def selftest() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(prog="WATT")
-    ap.add_argument("--role", choices=["app", "live", "input", "selftest"], default="app")
+    ap.add_argument("--role", choices=["app", "live", "input", "selftest", "apply-update"], default="app")
+    ap.add_argument("--target")
+    ap.add_argument("--pid", type=int, default=0)
     args, _ = ap.parse_known_args()
+    if args.role == "apply-update":
+        from watt import update
+        return update.apply_portable(args.target, args.pid)
     if args.role == "selftest":
         return selftest()
     if args.role == "live":

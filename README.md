@@ -8,8 +8,14 @@
 번역은 **내 PC 안의 AI**(Ollama + Gemma 4)가 합니다.
 
 ## 다운로드
-[**Releases**](../../releases/latest)에서 `WATT-Setup-<버전>.exe` 를 받아 실행하세요.
-관리자 권한 없이 내 계정에만 설치됩니다.
+[**Releases**](../../releases)에서 받으세요.
+
+| 종류 | 파일 | 쓰는 법 |
+|---|---|---|
+| **포터블**(기본) | `WATT-Portable-<버전>.zip` | 압축을 풀고 `WATT\WATT.exe` 실행. 설정·기록은 그 폴더 안 `data\` — 폴더째 옮겨도 됩니다 |
+| 설치판 | `WATT-Setup-<버전>.exe` | 실행하면 관리자 권한 없이 내 계정에만 설치. 설정·기록은 `%LOCALAPPDATA%\WATT` |
+
+새 기능은 포터블에 먼저 나오고, 설치판은 필요할 때 맞춰 냅니다. 둘 다 앱 안에서 자기 종류로 업데이트됩니다.
 
 > 코드 서명이 아직 없어 처음 실행할 때 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요.
 
@@ -36,13 +42,14 @@ AI 실행기(Ollama), 번역 모델, 글자 인식 언어 팩은 앱의 **환경
 - **자동 입력 없음** — 번역문은 클립보드에 두거나 입력칸에 넣기까지만 합니다. 보내기는 직접.
 
 ## 업데이트
-켤 때 새 버전을 확인합니다. 상단 막대에 새 버전 번호가 보이면 눌러서 업데이트하세요 — 받아서 확인값을 맞춰 본 뒤 설치하고 다시 켭니다.
+켤 때 새 버전을 확인합니다(포터블은 포터블로, 설치판은 설치판으로). 상단 막대에 새 버전 번호가 보이면 눌러서 업데이트하세요 — 받아서 확인값을 맞춰 본 뒤 설치하고 다시 켭니다.
 번역 설정 → 업데이트에서 끌 수 있습니다(확인할 때 GitHub 에 IP 가 남습니다).
 
 ## 삭제
 앱의 **환경 설정**에서 하나씩 지울 수 있습니다 — 모델·글꼴 애드온은 휴지통, OCR 언어 팩(중국어·러시아어)은 ×, Ollama 는 "제거".
 
-WATT 자체는 "설정 → 앱"에서 제거합니다. 제거할 때 하나씩 묻습니다.
+포터블은 앱 안에서 지울 것을 지운 뒤 폴더를 지우면 끝입니다.
+설치판은 "설정 → 앱"에서 제거합니다. 제거할 때 하나씩 묻습니다.
 - WATT 로 받은 AI 모델 · 게임 폴더의 글꼴 애드온 · WATT 설정과 기록(채팅 기록 포함)
 
 Ollama 와 Windows OCR 언어 팩은 다른 프로그램도 쓰므로 남깁니다. 필요 없으면 직접 지우세요.
@@ -55,7 +62,8 @@ pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr wi
   winrt-Windows.Globalization winrt-Windows.Storage.Streams winrt-Windows.Foundation winrt-Windows.Foundation.Collections
 python -m watt                # 런처
 python -m eval.quick_translate   # 번역 평가(60문장)
-python tools/build.py         # WATT.exe + 설치 프로그램
+python tools/build.py               # 포터블 zip (기본)
+python tools/build.py --installer   # + 설치 프로그램(필요할 때만)
 ```
 | 폴더 | 내용 |
 |---|---|

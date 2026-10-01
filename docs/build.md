@@ -1,14 +1,21 @@
 # WATT 배포판 만들기
 
 ```
-python tools/build.py              # 아이콘 → WATT.exe → 오픈소스 고지 → selftest → 설치 프로그램
-python tools/build.py --no-installer
+python tools/build.py               # 아이콘 → WATT.exe → 오픈소스 고지 → selftest → 포터블 zip(+ 풀어서 selftest)
+python tools/build.py --installer   # + 설치 프로그램 — 필요할 때만
 ```
 
 | 결과 | 위치 |
 |---|---|
 | 실행 파일(폴더형, 약 96MB) | `dist/WATT/WATT.exe` |
-| 설치 프로그램(약 31MB) | `dist/installer/WATT-Setup-<버전>.exe` |
+| **포터블(기본 배포)** | `dist/portable/WATT-Portable-<버전>.zip` |
+| 설치 프로그램(필요할 때만) | `dist/installer/WATT-Setup-<버전>.exe` |
+
+- **포터블이 기본**: 개발·릴리스는 포터블에 먼저 적용한다. 설치판은 필요할 때(예: 설치판의 업데이트 방식이 바뀔 때) 맞춰 낸다.
+  업데이트 확인은 자기 종류 파일이 있는 가장 새 릴리스를 고르므로, 포터블만 낸 릴리스는 설치판 사용자에게 안 보인다.
+- 포터블 판별: `WATT.exe` 옆 `portable.txt` → 설정·기록은 `<폴더>\data`(쓸 수 없는 폴더면 `%LOCALAPPDATA%\WATT`).
+- 포터블 업데이트: zip 을 `data\update\<버전>` 에 풀고 그 안의 새 `WATT.exe --role apply-update --target <폴더> --pid <n>` 이
+  옛 WATT 가 꺼지길 기다렸다 `_internal` 을 지우고 새 파일을 복사(data 는 그대로)한 뒤 다시 켠다. 기록: `data\logs\update.log`.
 
 - 버전은 `watt/__init__.py` 의 `VERSION` 하나만 바꾼다(exe 버전 정보·설치 프로그램 이름이 따라간다).
 - 버전 규칙 `0.1.N`: 안건(추가·수정·변경·삭제) 하나 = GitHub 이슈 하나 = N+1 = 릴리스 하나.

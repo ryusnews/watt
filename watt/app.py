@@ -121,7 +121,8 @@ class Api:
             "test": "done" if cfg.get("setup_done") else "todo",
         }
         return {
-            "app": {"name": APP_NAME, "full": APP_FULL, "version": VERSION, "data": str(paths.DATA)},
+            "app": {"name": APP_NAME, "full": APP_FULL, "version": VERSION, "data": str(paths.DATA),
+                    "portable": paths.PORTABLE},
             "settings": cfg, "system": self._sys, "ocr": oc, "ollama": ol,
             "removable_ocr": sorted(system.REMOVABLE_OCR),
             "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]),
@@ -294,11 +295,11 @@ class Api:
             if not paths.FROZEN or not info.get("sha256"):  # 개발 실행이거나 확인값이 없으면 페이지만
                 os.startfile(info["page"])
                 return {"opened": info["page"]}
-            setup = update.download(info, lambda d, t: self._emit(type="progress", task="update", done=d, total=t), cancel)
-            log.info("update %s -> %s", VERSION, info["version"])
+            got = update.download(info, lambda d, t: self._emit(type="progress", task="update", done=d, total=t), cancel)
+            log.info("update %s -> %s (%s)", VERSION, info["version"], info["kind"])
             self.stop_all()
-            release_lock()  # 설치 프로그램이 'WATT 가 켜져 있다'며 멈추지 않게
-            update.install(setup)
+            release_lock()  # 설치 프로그램·덮어쓰기가 'WATT 가 켜져 있다'며 멈추지 않게
+            update.start(info, got)
             if self._window:
                 self._window.destroy()
             return {"installing": info["version"]}
@@ -517,7 +518,9 @@ def main() -> int:
     paths.ensure()
     logging.basicConfig(filename=paths.LOGS / "app.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    log.info("start %s frozen=%s data=%s", VERSION, paths.FROZEN, paths.DATA)
+    log.info("start %s frozen=%s portable=%s data=%s", VERSION, paths.FROZEN, paths.PORTABLE, paths.DATA)
+    if paths.PORTABLE:
+        update.cleanup_stage()  # 지난 업데이트에서 풀어 둔 새 버전 파일
     # 조용히 꺼지는 일이 없게 — 처리 안 된 예외(메인·스레드)는 모두 app.log 에
     sys.excepthook = lambda et, ev, tb: log.critical("unhandled", exc_info=(et, ev, tb))
     threading.excepthook = lambda a: log.critical("thread %s", a.thread and a.thread.name,
