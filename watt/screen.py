@@ -208,6 +208,40 @@ def upscale2(bgra: np.ndarray) -> np.ndarray:
     return np.concatenate([out, np.full(out.shape[:2] + (1,), 255, np.uint8)], axis=2)
 
 
+def _cubic_w(d: float) -> float:
+    d = abs(d)
+    return 1.5 * d ** 3 - 2.5 * d ** 2 + 1 if d <= 1 else -0.5 * d ** 3 + 2.5 * d ** 2 - 4 * d + 2 if d < 2 else 0.0
+
+
+# 3배 — 출력 3n+r 의 원래 위치는 n + (r - 1)/3. 위상마다 이웃 4점의 고정 가중치(쌍삼차, a = -0.5)
+_P3 = []
+for _r in range(3):
+    _s = (_r - 1) / 3
+    _f = int(np.floor(_s))
+    _P3.append((_f, [_cubic_w(_s - (_f + j - 1)) for j in range(4)]))
+
+
+def _up_axis3(arr: np.ndarray, ax: int) -> np.ndarray:
+    n = arr.shape[ax]
+    p = np.pad(arr, [(2, 2) if i == ax else (0, 0) for i in range(arr.ndim)], mode="edge")
+    outs = []
+    for f, w in _P3:
+        acc = 0
+        for j in range(4):
+            acc = acc + w[j] * np.take(p, np.arange(n) + 2 + f + j - 1, axis=ax)
+        outs.append(acc)
+    shape = list(arr.shape)
+    shape[ax] *= 3
+    return np.stack(outs, axis=ax + 1).reshape(shape)
+
+
+def upscale3(bgra: np.ndarray) -> np.ndarray:
+    """3배 확대(쌍삼차) — 작은 글꼴의 영어를 다시 읽을 때. 일반 upscale(…, 3) 은 화면 한 장에 ~320ms."""
+    f = bgra[..., :3].astype(np.float32)
+    out = np.clip(_up_axis3(_up_axis3(f, 0), 1), 0, 255).astype(np.uint8)
+    return np.concatenate([out, np.full(out.shape[:2] + (1,), 255, np.uint8)], axis=2)
+
+
 def upscale(bgra: np.ndarray, k: float) -> np.ndarray:
     """k 배 확대(쌍삼차) — 한 메시지를 배율을 바꿔 다시 읽을 때(live.refine)."""
     def axis(arr, ax):
