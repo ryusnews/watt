@@ -325,6 +325,11 @@ kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; backgr
 .te-grid input:focus { box-shadow: 0 0 0 1.5px var(--teal); }
 .te-grid .te-switch { flex-direction: row; align-items: center; justify-content: space-between; align-self: end; height: 34px; }
 .modal-foot .grow { flex: 1; }
+.te-verify { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.te-verify .badge { gap: 4px; padding: 2px 4px 2px 8px; }
+.te-verify .badge button { width: 18px; height: 18px; border: 0; border-radius: 5px; background: transparent; color: inherit; display: grid; place-items: center; }
+.te-verify .badge button:hover { background: rgba(232,174,98,.22); }
+.te-verify .badge .ic { width: 12px; height: 12px; }
 
 /* ---- 정보 */
 #view-about.on { display: block; }

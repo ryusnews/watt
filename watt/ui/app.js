@@ -457,6 +457,17 @@ function editTerm(t) {
   for (const k of ['ko', 'en']) $(`#te-${k}`).value = e[k] || '';
   for (const k of ['ko_alias', 'en_abbr', 'zh', 'ru']) $(`#te-${k}`).value = list(e[k]);
   setSwitch('#te-zh_only', e.zh_only);
+  // 확인 필요 줄임말 — 맞으면 ✓ 로 확인(태그가 빠짐), 틀리면 줄임말 칸에서 지우면 함께 빠진다
+  let verify = [...(e.verify || [])];
+  const drawVerify = () => {
+    const now = $('#te-ko_alias').value.split(',').map((s) => s.trim());
+    const show = verify.filter((v) => now.includes(v));
+    $('#te-verify').hidden = !show.length;
+    setHTML($('#te-verify'), show.map((v) => `<span class="badge warn" data-tip="실제로 쓰이는 줄임말인지 확인 전">${esc(v)}<button data-v="${esc(v)}" aria-label="${esc(v)} 확인" data-tip="맞는 줄임말">${icon('i-check')}</button></span>`).join(''));
+  };
+  $('#te-verify').onclick = (ev) => { const b = ev.target.closest('button[data-v]'); if (b) { verify = verify.filter((v) => v !== b.dataset.v); drawVerify(); } };
+  $('#te-ko_alias').oninput = drawVerify;
+  drawVerify();
   $('#te-zh_only').onclick = () => setSwitch('#te-zh_only', $('#te-zh_only').getAttribute('aria-checked') !== 'true');
   $('#te-err').textContent = '';
   const del = $('#te-del'), reset = $('#te-reset');
@@ -471,7 +482,7 @@ function editTerm(t) {
   $('#te-no').onclick = () => { $('#term-edit').hidden = true; };
   $('#te-yes').onclick = () => done(() => call('save_term', { id: isNew ? '' : e.id, type: $('#te-type').value,
     ko: $('#te-ko').value, ko_alias: $('#te-ko_alias').value, en: $('#te-en').value, en_abbr: $('#te-en_abbr').value,
-    zh: $('#te-zh').value, ru: $('#te-ru').value, zh_only: $('#te-zh_only').getAttribute('aria-checked') === 'true' }), '저장했습니다 · 바로 번역에 씁니다');
+    zh: $('#te-zh').value, ru: $('#te-ru').value, zh_only: $('#te-zh_only').getAttribute('aria-checked') === 'true', verify }), '저장했습니다 · 바로 번역에 씁니다');
   del.onclick = async () => { if (await confirmBox(e.origin === 'added' ? '용어 지우기' : '용어 숨기기', e.ko)) done(() => call('delete_term', e.id), e.origin === 'added' ? '지웠습니다' : '숨겼습니다'); };
   reset.onclick = () => done(() => call('reset_term', e.id), '원래대로 되돌렸습니다');
 }

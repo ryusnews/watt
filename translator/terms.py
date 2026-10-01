@@ -21,7 +21,7 @@ CASE_SENSITIVE = {"IF", "ST", "SW", "OG", "DM", "SM", "XR", "ARM", "GY", "WS", "
 MAX_HINTS = 14
 
 
-FIELDS = ("type", "ko", "ko_alias", "en", "en_abbr", "zh", "ru", "zh_only")
+FIELDS = ("type", "ko", "ko_alias", "en", "en_abbr", "zh", "ru", "zh_only", "verify")
 TYPES = ("dungeon", "wing", "raid", "zone", "city", "class", "spec", "role", "chat", "item")
 
 
@@ -69,6 +69,8 @@ def _clean(entry: dict) -> dict:
     e = {"type": entry.get("type") if entry.get("type") in TYPES else "chat", "ko": str(entry.get("ko", "")).strip()[:40],
          "ko_alias": lst(entry.get("ko_alias")), "en": str(entry.get("en", "")).strip()[:60], "en_abbr": lst(entry.get("en_abbr")),
          "zh": lst(entry.get("zh")), "ru": lst(entry.get("ru")), "zh_only": bool(entry.get("zh_only"))}
+    # 확인이 필요한 한국 줄임말(실제로 쓰이는지 모름) — 사용자가 확인하면 빠진다. 줄임말에서 지운 것은 함께 빠진다
+    e["verify"] = [s for s in lst(entry.get("verify")) if s in e["ko_alias"]]
     if not e["ko"]:
         raise ValueError("한국 이름이 필요합니다")
     if not (e["en"] or e["en_abbr"] or e["zh"] or e["ru"] or e["ko_alias"]):
