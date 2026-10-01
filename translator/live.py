@@ -54,13 +54,21 @@ def looks_russian(text: str) -> bool:
             and len(CYR_WORD.findall(core)) >= 2)
 
 
+RADICAL_NOISE = re.compile(r"[丿彐凵匚卜乃乬巳丨亅冂刂廾乂囗乁冖勹匸亠]")
+
+
 def is_junk(body: str) -> bool:
     """OCR 잡음(*fifi + +, R-fi±T2, 4/ixFf#) — 번역하지 않는다. 글자(한글·한자·라틴·키릴)가 4자 미만이거나 기호·숫자가 35%↑."""
     chars = re.sub(r"\s", "", body)
     letters = len(re.findall(r"[A-Za-zЀ-ӿ一-鿿가-힣]", chars))
     if letters < 4 and not (letters >= 2 and CJK.search(chars)):
         return True
-    return (len(chars) - letters) / max(1, len(chars)) >= 0.35
+    if len(RADICAL_NOISE.findall(chars)) >= 3:  # 한국어 채널 이름을 중국어 엔진이 부수로 읽은 조각('丿 H - 9 彐引 ]')
+        return True
+    # 흔한 문장 부호(~ ! ? . = 등)는 잡음으로 세지 않는다 — '怒焰来本地人 =2DPS~~~' 를 버렸다(2026-10-01)
+    rest = re.sub(r"[A-Za-zЀ-ӿ一-鿿가-힣~!?.,=！？。，、…～]", "", chars)
+    odd = len(re.sub(r"\d", "", rest)) + 0.5 * len(re.findall(r"\d", rest))  # 숫자는 반만('LF 2 dps 20+')
+    return odd / max(1, len(chars)) >= 0.35
 
 
 def _outside_links(body: str) -> str:
@@ -70,8 +78,8 @@ def _outside_links(body: str) -> str:
 def korean_body(body: str) -> bool:
     """링크를 빼고 한글이 4자 이상이고 라틴보다 많다 — 한국어 글."""
     s = _outside_links(body)
-    h = len(HANGUL.findall(s))
-    return h >= 4 and h >= len(LATIN.findall(s))
+    h, la = len(HANGUL.findall(s)), len(LATIN.findall(s))
+    return (h >= 4 and h >= la) or (h >= 1 and la == 0)  # '넵' · '네' 같은 짧은 대답도
 
 
 def garbled_ko(body: str) -> bool:
