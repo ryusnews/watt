@@ -1,7 +1,7 @@
 """채팅 영역 자동 찾기(예전 tools/find_chat.ps1).
 
 1) WoW 창(클라이언트 영역)을 캡처
-2) 화면 전체 OCR(중국어 엔진: 한자+영어, 한국어 엔진: 한글)에서 채팅 줄 형식([1] [이름]: … / [이름]: …)을 모은다
+2) 화면 전체 OCR(중국어 엔진: 한자+영어, 한국어 엔진: 한글)에서 채팅 줄 머리([6] · [6. 파티찾기] · [이름]: …)를 모은다
 3) 왼쪽 끝이 비슷한 줄이 가장 많이 모인 무리 = 채팅창
 4) 채팅 배경(단색)이 끝나는 테두리까지 넓힌다 — 채팅 내용과 상관없이 같은 사각형이 나오게
 결과: 창 기준 좌표 + 비율(해상도가 바뀌어도 다시 쓸 수 있게) + 화면 좌표.
@@ -16,7 +16,12 @@ import numpy as np
 from . import paths, screen
 from .ocr import Ocr
 
-CHAT_RX = re.compile(r"^\s*\[\s*\d+\s*\]\s*\[|^\s*\[[^\]]{2,24}\]\s*[:：]")
+# 채팅 줄 머리: [6] [이름] · [6. 파티찾기] [이름] · [1. 공개 - 오그리마] · [이름]: · [이름]님의 외침: · [12:30] (시간 표시)
+# 채팅 줄 머리: [6] [이름] · [6. 파티찾기] · [1. 공개 - 오그리마] · [이름]: · [이름]님의 외침: · [12:30] (시간 표시).
+# 앞에 OCR 부스러기가 몇 글자 붙어도 받는다. 퀘스트 목록 [18] 퀘스트 이름 은 아님(둘째 괄호 · 점 · 콜론이 없다)
+CHAT_RX = re.compile(r"^.{0,4}?[\[〔(]\s*\d{1,2}\s*(?:[.．,]|[\]〕)]\s*[\[〔(])"
+                     r"|^.{0,4}?\[[^\]]{1,32}\]\s*(?:님의\s*\S{1,4}\s*)?[:：]"
+                     r"|^.{0,4}?\[\s*\d{1,2}\s*[:：]\s*\d{2}")
 TOL, RUN = 2, 4
 
 
@@ -52,8 +57,10 @@ def find(img: np.ndarray | None = None, window: dict | None = None) -> dict:
     hits = list(dedup.values())
     if not hits:
         raise NotFound("채팅 줄([채널] [이름]: …)이 보이지 않습니다 — 채팅창에 대화가 몇 줄 보일 때 다시 시도하세요")
-    col = Counter(round(l["x"] / 40) for l in hits).most_common(1)[0][0]
-    chat = [l for l in hits if round(l["x"] / 40) == col]
+    # 왼쪽 끝이 비슷한(±2줄 높이) 줄이 가장 많은 무리 — 앞 부스러기로 x 가 조금씩 달라도 한 무리로
+    near = lambda a, b: abs(a["x"] - b["x"]) <= 2 * max(12, a["b"] - a["y"])
+    best = max(hits, key=lambda a: sum(near(a, b) for b in hits))
+    chat = [l for l in hits if near(best, l)]
     L, T = min(l["x"] for l in chat), min(l["y"] for l in chat)
     R, B = max(l["r"] for l in chat), max(l["b"] for l in chat)
     line_h = int(round(sum(l["b"] - l["y"] for l in chat) / len(chat)))
@@ -101,6 +108,12 @@ def find(img: np.ndarray | None = None, window: dict | None = None) -> dict:
     if tops:
         T, B = min(tops), max(bottoms)
     L, R = box_l, box_r
+    # 배경이 반투명이면 테두리 찾기가 일찍 멈춘다 — 찾은 채팅 줄은 반드시 다 들어가게(첫 줄 윗부분이 잘리던 문제)
+    pad = max(3, line_h // 4)
+    T = max(0, min(T, min(l["y"] for l in chat) - pad))
+    B = min(H - 1, max(B, max(l["b"] for l in chat) + pad))
+    L = max(0, min(L, min(l["x"] for l in chat) - pad))
+    R = min(W - 1, max(R, max(l["r"] for l in chat) + pad))
 
     return {
         "source": window.get("exe"),
