@@ -251,7 +251,24 @@ class Api:
     # ---- 설정
     @_logged
     def save_settings(self, changes: dict) -> dict:
-        return settings.save(changes)
+        old = settings.load()["model"]
+        cfg = settings.save(changes)
+        self._switch_model(old, cfg["model"])
+        return cfg
+
+    def _switch_model(self, old: str, new: str) -> None:
+        """번역 모델을 바꾸면 WATT 가 쓰던 모델을 내리고(VRAM 비우기) 새 모델을 올린다(미리 올리기 켜짐일 때).
+        다른 프로그램이 올린 다른 모델은 건드리지 않는다."""
+        if not old or old == new:
+            return
+
+        def work():
+            from translator import llm
+            gone = llm.unload(old)
+            log.info("model switch %s -> %s (unloaded=%s)", old, new, gone)
+            if settings.load()["preload"]:
+                llm.preload(new)
+        threading.Thread(target=work, daemon=True).start()
 
     # ---- AI 글자 인식(언어별로 켜고, 켤 때 그 모델만 받는다)
     def get_ai(self) -> dict:
@@ -329,7 +346,7 @@ class Api:
             st = system.model_pull(name, prog, cancel)
             if not had:  # 원래 있던 모델은 삭제할 때 건드리지 않는다
                 system.remember(paths.INSTALLED_MODELS, name)
-            settings.save({"model": name})
+            self.save_settings({"model": name})
             return st
         return self._task("pull", work)
 
@@ -447,7 +464,7 @@ class Api:
 
     @_logged
     def use_model(self, name: str) -> dict:
-        return settings.save({"model": name})
+        return self.save_settings({"model": name})
 
     @_logged
     def pick_game_folder(self) -> dict:

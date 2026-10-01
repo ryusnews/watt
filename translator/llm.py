@@ -29,6 +29,28 @@ def chat_json(model: str, system: str, user: str, schema: dict, keep_alive: str 
                 raise ValueError(f"응답이 JSON 이 아님({resp.get('done_reason')}): {content[:80]!r}") from None
 
 
+def loaded() -> list[str]:
+    """지금 Ollama 가 올려 둔 모델."""
+    try:
+        with urllib.request.urlopen(URL + "/api/ps", timeout=5) as r:
+            return [m["name"] for m in json.load(r).get("models", [])]
+    except (urllib.error.URLError, OSError, ValueError):
+        return []
+
+
+def unload(model: str) -> bool:
+    """올라가 있으면 내린다(keep_alive 0). 안 올라간 모델에 보내면 올렸다 내리므로 먼저 확인한다."""
+    if model not in loaded():
+        return False
+    req = urllib.request.Request(URL + "/api/generate", data=json.dumps({"model": model, "keep_alive": 0}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=60).read()
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def preload(model: str, keep_alive: str = "30m") -> None:
     """첫 번역이 모델 올리기(수 초)를 기다리지 않게 미리 올린다."""
     req = urllib.request.Request(URL + "/api/generate", data=json.dumps({"model": model, "keep_alive": keep_alive}).encode(),
