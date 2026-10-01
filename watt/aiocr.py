@@ -89,6 +89,11 @@ class AiOcr:
             + ["CPUExecutionProvider"]
         opt = ort.SessionOptions()
         opt.log_severity_level = 3
+        # 게임과 CPU 를 나눠 쓴다: 스레드 4개, 일 없을 때 돌며 기다리지 않기(기본은 16스레드가 돌아 띠 하나에 CPU ~1초),
+        # 크기마다 잡아 두는 메모리 풀 끄기(RAM 630 → 230MB). 띠 읽기 ~85 → ~115ms(2026-10-01)
+        opt.intra_op_num_threads, opt.inter_op_num_threads = 4, 1
+        opt.enable_cpu_mem_arena = False
+        opt.add_session_config_entry("session.intra_op.allow_spinning", "0")
 
         def load(name):
             return ort.InferenceSession(str(MODEL_DIR / MODELS[name][0]), opt, providers=prov)

@@ -719,7 +719,7 @@ class Live:
 
     def apply_ai(self, cfg: dict) -> None:
         """AI 글자 인식 언어가 바뀌면 뒤에서 모델을 띄운다(1–2초) — 그동안은 Windows OCR 만."""
-        want = (tuple(cfg.get("ai_langs") or []), bool(cfg.get("ai_gpu", True)))
+        want = (tuple(cfg.get("ai_langs") or []), bool(cfg.get("ai_gpu", False)))
         if want == getattr(self, "ai_want", None):
             return
         self.ai_want = want
