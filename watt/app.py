@@ -412,7 +412,11 @@ class Api:
             paths.RESUME.unlink(missing_ok=True)
         except (OSError, ValueError):
             return {}
-        if r.get("live") and time.time() - r.get("t", 0) < 600 and not self._alive("live") and self._live_status() is None:
+        st = self._live_status()
+        # 옛 통역 창이 꺼지기 직전에 쓴 상태 파일(몇 초 전)을 '이미 돌고 있음'으로 보고 건너뛰었다(0.1.53 → 0.1.56, 2026-10-01)
+        # — 업데이트 뒤에 쓴 상태만 본다
+        running = self._alive("live") or (st is not None and st.get("t", 0) > r.get("t", 0) + 1)
+        if r.get("live") and time.time() - r.get("t", 0) < 600 and not running:
             log.info("resume live after update to %s", r.get("to"))
             self.start("live")
             return {"live": True}
