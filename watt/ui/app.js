@@ -733,6 +733,7 @@ function bind() {
   if (c.welcomed && !setupDone()) S.step = Math.max(0, STEPS.findIndex((s) => stepState(s.key) !== 'done'));
   document.body.classList.remove('booting');
   if (c.input_on && !S.live.running.input && setupDone()) call('start', 'input');
+  if (setupDone()) call('resume').then((r) => { if (r && r.live) { S.starting = Date.now(); toast('업데이트 전처럼 통역을 이어서 켭니다', 'ok'); refresh(); } }).catch(() => {});
   if (S.view === 'home' && !c.onboarded) setTimeout(() => coach(true), 400);
   checkUpdate(false).catch(() => {});
   setInterval(() => refresh(false).catch(() => {}), 1500);
@@ -798,7 +799,7 @@ function mockApi() {
       sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092 } }),
     set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
     remove_ai: () => ok({}),
-    toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
+    resume: () => ok({}), toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),

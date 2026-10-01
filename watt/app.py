@@ -392,12 +392,31 @@ class Api:
         ver = update.pending()
         if not ver:
             return {"ready": False}
+        try:  # 통역이 돌고 있었으면 새 버전이 켜질 때 바로 이어서(업데이트 단추만 누르면 끊김 없이)
+            paths.RESUME.write_text(json.dumps({"live": self._alive("live") or self._live_status() is not None,
+                                                      "t": time.time(), "to": ver}), encoding="utf-8")
+        except OSError:
+            pass
         self.stop_all()
         release_lock()  # 바꿔 끼우기가 끝나고 다시 켜질 새 WATT 가 잠금을 잡을 수 있게
         update.launch_apply(ver)
         if self._window:
             self._window.destroy()
         return {"restarting": ver}
+
+    @_logged
+    def resume(self) -> dict:
+        """업데이트 직전에 통역이 돌고 있었으면 이어서 켠다 — 10분 안에 다시 켜진 경우만(업데이트가 실패해 나중에 켠 것은 아님)."""
+        try:
+            r = json.loads(paths.RESUME.read_text(encoding="utf-8"))
+            paths.RESUME.unlink(missing_ok=True)
+        except (OSError, ValueError):
+            return {}
+        if r.get("live") and time.time() - r.get("t", 0) < 600 and not self._alive("live") and self._live_status() is None:
+            log.info("resume live after update to %s", r.get("to"))
+            self.start("live")
+            return {"live": True}
+        return {}
 
     @_logged
     def delete_model(self, name: str) -> dict:
