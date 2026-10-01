@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from . import terms
+from . import ocrfix, terms
 from .llm import chat_json
 
 HERE = Path(__file__).resolve().parent
@@ -72,6 +72,7 @@ OCR_FIXES = [  # 번역 전에 코드로 — 프롬프트로만 알려 주면 'I
 
 
 def normalize_ocr(text: str) -> str:
+    text = ocrfix.fix(text)  # 0 · O · o, 1 · l · I · | — 사전 · 상용어 · 숫자 자리로(#31)
     for rx, rep in OCR_FIXES:
         text = rx.sub(rep, text)
     return text
