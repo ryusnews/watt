@@ -266,7 +266,8 @@ class Reader:
     def _read(self, img, top: int) -> dict:
         big = screen.upscale2(img) if self.scale == 2 else img
         lines = self.ocr.read_lines(big, self.scale)
-        if self.small_font():
+        if self.small_font() and not (self.ocr.ai and "zh" in self.ocr.ai.rec):
+            # AI 중국어 모델이 켜져 있으면 영어 본문은 그 결과를 쓰므로(live.pick_lines) 영어 3배 다시 읽기는 하지 않는다
             # 작은 글꼴(Prat 기본 등)은 영어 엔진만 3배로 다시 — 2배로는 g 를 q 로(Gg Friggenez → Gq Friaqenez), Graveborn 을
             # raveborn 으로 읽었다. 엔진 넷을 다 3배로 하면 기본 채팅의 작은 화면에서 머리 괄호를 잘못 읽어 메시지를 놓쳤다(2026-10-01)
             lines["en-US"] = self.ocr.engine_lines("en-US", screen.upscale3(img), 3)
