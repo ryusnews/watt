@@ -65,6 +65,7 @@ OCR_FIXES = [  # 번역 전에 코드로 — 프롬프트로만 알려 주면 'I
     (re.compile(r"\b(?:IVI|Ivl|IvI|lvI)\b"), "lvl"),
     (re.compile(r"\b(?:Ifg|Ifa|lfa|IFG)\b"), "lfg"),
     (re.compile(r"\b(?:Ifm|IFM)\b"), "lfm"),
+    (re.compile(r"\bL[Ff][Il](?=M?\b)"), "LF1"),  # LF1 · LF1M 의 1 을 I 로(LFI DPS SFK — 2026-10-01 모니터링)
     (re.compile(rf"\bIf(?=\s+{_LF_NEXT}\b)", re.I), "lf"),
     (re.compile(r"(?<![A-Za-z0-9])[Il](?=\s?DPS\b)"), "1"),  # 'AH4 = IDPS' — 숫자 1 을 I 로 읽음(2026-09-30 로그)
 ]

@@ -59,10 +59,11 @@ def _letters(text: str) -> int:
 
 
 def looks_chinese(text: str) -> bool:
-    """한자가 글자의 40%↑([이름]·<길드> 빼고) — 키릴·라틴을 읽다 섞여 나온 한자 몇 개(月角 沩)는 걸러진다."""
+    """한자가 글자의 25%↑([이름]·<길드> 빼고) — 키릴·라틴을 읽다 섞여 나온 한자 몇 개(月角 沩)는 걸러진다."""
     core = TAGS.sub(" ", text)
     han = len(CJK.findall(core))
-    return han >= 2 and han >= 0.4 * _letters(core)
+    # 0.25: 중국 사용자는 병음 · 영어 약자를 섞는다(NY来法系DPS和N — 한자 4/13). 키릴 · 라틴을 읽다 나온 가짜 한자는 그보다 적다
+    return han >= 2 and han >= 0.25 * _letters(core)
 
 
 def looks_korean(text: str) -> bool:
