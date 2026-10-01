@@ -416,7 +416,7 @@ class Api:
         def work(cancel):
             r = chat_region.find_and_save()
             rect = chat_region.screen_rect(r)
-            img = screen.capture(rect["x"], rect["y"], rect["w"], rect["h"])
+            img = screen.capture_game(rect["x"], rect["y"], rect["w"], rect["h"])
             return {"region": r, "preview": "data:image/png;base64," + base64.b64encode(screen.png_bytes(img)).decode()}
         return self._task("region", work)
 

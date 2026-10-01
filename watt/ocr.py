@@ -94,7 +94,7 @@ class Reader:
 
     def read(self, region: dict, force: bool = False) -> dict:
         t0 = time.perf_counter()
-        img = screen.capture(region["x"], region["y"], region["w"], region["h"])
+        img = screen.capture_game(region["x"], region["y"], region["w"], region["h"])  # 가려지면 게임 창 출력에서
         sig = screen.text_sig(img)
         diff = screen.sig_diff(sig, self.last_sig)
         min_diff = max(12, int(sig.size * 0.001))

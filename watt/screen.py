@@ -89,6 +89,57 @@ def capture(x: int, y: int, w: int, h: int) -> np.ndarray:
     return np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4).copy()
 
 
+def capture_window(win: dict) -> np.ndarray | None:
+    """게임 창 자체의 출력(클라이언트 영역) — 다른 창(WATT · 통역 창 · 브라우저)이 가려도 게임 화면을 받는다.
+    PrintWindow(PW_CLIENTONLY | PW_RENDERFULLCONTENT): DirectX 창도 DWM 이 그린 내용으로 준다. 실패하거나 까맣면 None."""
+    hwnd, w, h = win["hwnd"], win["w"], win["h"]
+    dc = user32.GetDC(hwnd)
+    mdc = gdi32.CreateCompatibleDC(dc)
+    bmp = gdi32.CreateCompatibleBitmap(dc, w, h)
+    try:
+        old = gdi32.SelectObject(mdc, bmp)
+        ok = user32.PrintWindow(hwnd, mdc, 3)
+        gdi32.SelectObject(mdc, old)
+        bi = _BMIH(ctypes.sizeof(_BMIH), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+        buf = (ctypes.c_ubyte * (w * h * 4))()
+        gdi32.GetDIBits(mdc, bmp, 0, h, buf, ctypes.byref(bi), 0)
+    finally:
+        gdi32.DeleteObject(bmp)
+        gdi32.DeleteDC(mdc)
+        user32.ReleaseDC(hwnd, dc)
+    img = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4).copy()
+    return img if ok and img[::16, ::16, :3].max() > 8 else None
+
+
+def covered(win: dict, x: int, y: int, w: int, h: int) -> bool:
+    """(x,y,w,h) 안에 게임이 아닌 창이 보이는가 — 몇 점을 찍어 맨 위 창이 게임인지 본다."""
+    for fy in (0.1, 0.5, 0.9):
+        for fx in (0.05, 0.3, 0.6, 0.95):
+            pt = wt.POINT(int(x + w * fx), int(y + h * fy))
+            top = user32.WindowFromPoint(pt)
+            if top and user32.GetAncestor(top, 2) != win["hwnd"]:  # GA_ROOT
+                return True
+    return False
+
+
+_game = {"win": None, "t": 0.0}
+
+
+def capture_game(x: int, y: int, w: int, h: int) -> np.ndarray:
+    """채팅 영역 캡처 — 보이면 화면에서(빠름), 다른 창이 가리면 게임 창 출력에서 잘라 온다."""
+    import time
+    if time.monotonic() - _game["t"] > 2:
+        _game["win"], _game["t"] = find_game_window(), time.monotonic()
+    win = _game["win"]
+    if win and covered(win, x, y, w, h):
+        full = capture_window(win)
+        if full is not None:
+            ox, oy = x - win["x"], y - win["y"]
+            if 0 <= ox and 0 <= oy and ox + w <= win["w"] and oy + h <= win["h"]:
+                return full[oy:oy + h, ox:ox + w].copy()
+    return capture(x, y, w, h)
+
+
 def luminance(bgra: np.ndarray) -> np.ndarray:
     b, g, r = (bgra[..., i].astype(np.int32) for i in range(3))
     return (r * 299 + g * 587 + b * 114) // 1000
