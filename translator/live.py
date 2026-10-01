@@ -95,14 +95,14 @@ def english_garbled(text: str) -> bool:
 # 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
 # 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
 HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ]"
-                    r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
+                    r"\s*(?P<kind>님\s?(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
 
 
 # 줄 앞에 무엇이 붙든(기본 채팅 [1. 공개 - 오그리마] · 시간 표시 · 애드온) 마지막 [이름]: 을 머리로 —
 # 왼쪽 여백에서 시작하는 줄에만 쓴다(들여쓴 뒷줄의 [아이템]: 을 머리로 오인하지 않게). #10 의 첫 단계
 GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ1I|]"
-                     r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers"
-                     r"|[^\s:：\[\]]{1,4}(?:\s+[^\s:：\[\]]{1,4}){0,2})?\s*[:：]\s*(?P<body>.*)$")  # 끝: 깨진 '님의 외침'(Е91 91 Е)
+                     r"\s*(?P<kind>님\s?(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers"
+                     r"|[^\s:：\[\]()（]{1,4}(?:\s+[^\s:：\[\]()（]{1,4}){0,3})?\s*[:：]\s*(?P<body>.*)$")  # 끝: 깨진 '님의 외침'(Е91 91 Е)
 PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개] · [6] — [12:30] 같은 시간은 아님
 
 
@@ -236,6 +236,35 @@ def line_pitch(rows: list[dict], default: int) -> int:
     return max(8, int(gaps[len(gaps) // 2]))
 
 
+def _pure(name: str, rx: re.Pattern) -> tuple[int, float]:
+    letters = re.findall(r"[^\W\d_]", name)
+    n = len(rx.findall(name))
+    return n, n / max(1, len(letters) + len(re.findall(r"\d", name)))
+
+
+def best_name(row: dict, current: str) -> str:
+    """이름은 그 문자를 제대로 읽는 엔진 것으로 — 한글은 한국어 엔진, 키릴은 러시아어 엔진, 한자는 중국어 엔진, 라틴은 영어 엔진.
+    줄 엔진 하나로 읽으면 이름이 엔진마다 다르게 깨진다(Катя Мизулина → KaTß M 囝 3Y 月 囝 Ha, 2026-10-01)."""
+    names = {}
+    for lang, c in row["cand"].items():
+        h = parse_header(c or "", True)
+        if h:
+            names[lang] = h["name"].strip()
+    n, p = _pure(names.get("ko", ""), HANGUL)
+    if n >= 2 and p >= 0.8:
+        return names["ko"]
+    n, p = _pure(names.get("ru", ""), CYRILLIC)
+    if n >= 3 and p >= 0.8 and CYR_DISTINCT.search(names["ru"]):
+        return names["ru"]
+    n, p = _pure(names.get("zh", ""), CJK)
+    if n >= 2 and p >= 0.8:
+        return CJK_GAP.sub("", names["zh"])
+    n, p = _pure(names.get("en", ""), LATIN)
+    if n >= 3 and p >= 0.9:
+        return names["en"]
+    return current
+
+
 def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -> list[dict]:
     """머리([채널] [이름]:)로 시작하는 줄 + 이어지는 줄바꿈 줄 = 메시지. 머리 없는 맨 위 조각·시스템 메시지는 버린다.
     orphans 를 주면 버린 줄(머리도 아니고 이어지는 줄도 아닌 것)을 담는다 — 머리 인식 실패를 찾는 데 쓴다."""
@@ -259,7 +288,7 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
             if not ch:  # 고른 엔진이 채널을 빠뜨렸으면 다른 엔진이 읽은 것으로(외침·귓말은 한국어 엔진이 잘 읽는다)
                 ch = next((c["ch"] for c in (parse_header(x or "", at_margin) for x in r["cand"].values()) if c and c["ch"]),
                           None)
-            cur = {"ch": ch or "?", "name": h["name"].strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
+            cur = {"ch": ch or "?", "name": best_name(r, h["name"].strip()), "body": body.strip(), "lang": r["lang"], "y": r["y"],
                    "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
@@ -343,6 +372,7 @@ class Seen:
 
     def __init__(self, size: int = 80):
         self.keys: deque[str] = deque(maxlen=size)
+        self.at: dict[str, float] = {}  # 처음 본 시각 — 다시 올린 글인지 볼 때
 
     def check(self, key: str) -> tuple[bool, float, str]:
         """(새것인가, 가장 비슷한 것과의 유사도, 그 키). 새것이면 기억한다."""
@@ -353,8 +383,14 @@ class Seen:
                 best, best_key = ratio, k
             if ratio >= self.THRESHOLD:
                 return False, ratio, k
+        if len(self.keys) == self.keys.maxlen:
+            self.at.pop(self.keys[0], None)
         self.keys.append(key)
+        self.at[key] = time.monotonic()
         return True, best, best_key
+
+    def age(self, key: str) -> float:
+        return time.monotonic() - self.at.get(key, time.monotonic())
 
 
 class Trace:
@@ -674,11 +710,15 @@ class Live:
                 if any((k == q or difflib.SequenceMatcher(None, k, q).ratio() >= 0.95)
                        and ((py <= y + 2) if top_mode else (py >= y - 2)) for q, py in self.prev_keys)]
         self.prev_keys = cur
+        stay_set = set(stay)
         newest_top = top_mode
         edge = (min(stay) if newest_top else max(stay)) if stay else None
         for i, (m, new, sim, near) in enumerate(checked):
-            if not new and not self.first and near not in self.shown and \
-                    (edge is None or (i < edge if newest_top else i > edge)):
+            # 다시 올린 글: 통역 창에 올린 적 없는 글이 이번 화면에 새로 나타남(앞 화면에 같은 자리 · 아래에 없음) +
+            # 새 메시지 쪽이거나 처음 본 지 20초가 지남. 위치만 보면 놓치는 경우가 있었다(러시아어 광고를 44번 올려도 안 보임)
+            if not new and not self.first and near not in self.shown and i not in stay_set and \
+                    (edge is None or (i < edge if newest_top else i > edge)
+                     or max(self.seen.age(near), self.seen_body.age(near)) > 20):
                 new = True  # 켰을 때 보이던(번역하지 않은) 글을 다시 올린 것 — 한 번은 번역(怒焰来T 4=1 을 수십 번 올려도 안 보이던 문제)
             if not new:
                 if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
