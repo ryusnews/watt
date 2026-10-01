@@ -107,6 +107,12 @@ class Ocr:
         except Exception as e:  # 없는 모델 · 실행 엔진 · GPU 문제
             self.ai_error = f"{type(e).__name__}: {e}"
 
+    def engine_lines(self, key: str, big: np.ndarray, scale: float) -> list[dict]:
+        """엔진 하나로만 읽은 줄(원래 좌표)."""
+        if key not in self.engines:
+            return []
+        return self.lines_of(self.loop.run_until_complete(self.engines[key].recognize_async(to_bitmap(big))), scale)
+
     def read_lines(self, big: np.ndarray, scale: float) -> dict[str, list[dict]]:
         """확대한 화면 → 엔진 자리별 줄(원래 좌표). AI 를 켠 언어는 그 모델이 읽은 줄로."""
         lines = {k: self.lines_of(r, scale) for k, r in self.recognize(big).items()}
@@ -250,8 +256,21 @@ class Reader:
 
     def _read(self, img, top: int) -> dict:
         big = screen.upscale2(img) if self.scale == 2 else img
-        return {k: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top} for l in ls]
-                for k, ls in self.ocr.read_lines(big, self.scale).items()}
+        lines = self.ocr.read_lines(big, self.scale)
+        if self.small_font():
+            # 작은 글꼴(Prat 기본 등)은 영어 엔진만 3배로 다시 — 2배로는 g 를 q 로(Gg Friggenez → Gq Friaqenez), Graveborn 을
+            # raveborn 으로 읽었다. 엔진 넷을 다 3배로 하면 기본 채팅의 작은 화면에서 머리 괄호를 잘못 읽어 메시지를 놓쳤다(2026-10-01)
+            lines["en-US"] = self.ocr.engine_lines("en-US", screen.upscale(img, 3), 3)
+        return {e: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top} for l in ls]
+                for e, ls in lines.items()}
+
+    def small_font(self) -> bool:
+        """줄 간격이 19px 보다 좁은가(Prat 기본 17–18px, 경계에서 흔들리지 않게) — 지난 화면의 줄들에서 잰다(채팅 영역을 찾을 때 잰 값은 글꼴을 바꾸면 틀림)."""
+        if self.scale != 2 or not self.last_lines:
+            return False
+        ys = sorted({l["y"] for l in self.last_lines.get("ko") or [] if l.get("h")})
+        gaps = [b - a for a, b in zip(ys, ys[1:]) if 8 <= b - a <= 60]
+        return len(gaps) >= 4 and float(np.median(gaps)) < 19
 
     def save_last(self, path: Path) -> bool:
         if self.last_img is None:
