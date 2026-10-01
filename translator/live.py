@@ -86,13 +86,33 @@ def english_garbled(text: str) -> bool:
 # 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
 # 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
 HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]"
-                    r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
+                    r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
+
+
+# 줄 앞에 무엇이 붙든(기본 채팅 [1. 공개 - 오그리마] · 시간 표시 · 애드온) 마지막 [이름]: 을 머리로 —
+# 왼쪽 여백에서 시작하는 줄에만 쓴다(들여쓴 뒷줄의 [아이템]: 을 머리로 오인하지 않게). #10 의 첫 단계
+GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]"
+                     r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：]\s*(?P<body>.*)$")
+PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개] · [6] — [12:30] 같은 시간은 아님
+
+
+def parse_header(text: str, generic: bool = False) -> dict | None:
+    """{ch, name, body} — [6] [이름]: 꼴, generic 이면 앞에 무엇이 붙은 [이름]: 도."""
+    m = HEADER.match(text or "")
+    if m:
+        return {"ch": _channel(m), "name": m.group("name"), "body": m.group("body")}
+    if generic:
+        g = GENERIC.match(text or "")
+        if g:
+            pre = PRE_CH.search(g.group("pre"))
+            return {"ch": pre.group(1) if pre else _channel(g), "name": g.group("name"), "body": g.group("body")}
+    return None
 
 
 def _channel(m: re.Match) -> str | None:
     """채널 번호, 없으면 외침·귓말."""
-    kind = m.group("kind") or ""
-    return m.group("ch") or ("외침" if "외침" in kind or kind == "yells" else
+    kind = (m.group("kind") or "").replace(" ", "")
+    return m.groupdict().get("ch") or ("외침" if "외침" in kind or kind == "yells" else
                              "귓말" if "귓속말" in kind or kind == "whispers" else None)
 
 
@@ -164,9 +184,9 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
             text = repair_segments(text, r and r["t"], z and z["t"])
         row = {"y": chosen["y"], "x": min(l["x"] for l in row), "text": text, "lang": lang, "feat": feat,
                "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
-        if not HEADER.match(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
-            row["alt_header"] = next((c["t"] for c in (e, r, z, k) if c and HEADER.match(c["t"])
-                                      and _channel(HEADER.match(c["t"]))), None)
+        if not parse_header(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
+            row["alt_header"] = next((c["t"] for c in (e, k, r, z) if c and (h := parse_header(c["t"], True)) and h["ch"]),
+                                     None)
         out.append(row)
     return out
 
@@ -178,29 +198,30 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     # 들여쓰기는 채팅창 왼쪽 여백 기준 — 머리 줄 x 기준이면, OCR 이 [6] 을 빠뜨려 머리 줄이 오른쪽에서 시작할 때
     # 들여쓴 뒷줄이 떨어져 나간다(2026-09-30 frame 122: 3줄 광고가 첫 줄만 번역)
     margin = min((r["x"] for r in rows), default=0)
-    for r in rows:
-        m = HEADER.match(r["text"])
-        body = m.group("body") if m else None
-        if not m and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 콜론 뒤)으로
-            m = HEADER.match(r["alt_header"])
-            colon = re.search(r"[:：]", r["text"][:48])
-            body = r["text"][colon.end():] if colon else m.group("body")
-        if m:
-            ch = m.group("ch")
-            if not ch:  # 고른 엔진이 [6] 을 빠뜨렸으면 다른 엔진이 읽은 채널 번호로(외침·귓말은 한국어 엔진이 잘 읽는다)
-                for c in r["cand"].values():
-                    h = HEADER.match(c or "")
-                    if h and h.group("ch"):
-                        ch = h.group("ch")
-                        break
-                else:
-                    ch = next((_channel(h) for c in r["cand"].values() if (h := HEADER.match(c or "")) and _channel(h)),
-                              None)
-            cur = {"ch": ch or "?", "name": m.group("name").strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
+    for i, r in enumerate(rows):
+        at_margin = r["x"] < margin + line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
+        h = parse_header(r["text"], at_margin)
+        body = h["body"] if h else None
+        if not h and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 ]: 뒤)으로
+            h = parse_header(r["alt_header"], True)
+            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", r["text"][:72]) or re.search(r"[:：]", r["text"][:72])
+            body = r["text"][colon.end():] if colon else h["body"]
+        if h:
+            ch = h["ch"]
+            if not ch:  # 고른 엔진이 채널을 빠뜨렸으면 다른 엔진이 읽은 것으로(외침·귓말은 한국어 엔진이 잘 읽는다)
+                ch = next((c["ch"] for c in (parse_header(x or "", at_margin) for x in r["cand"].values()) if c and c["ch"]),
+                          None)
+            cur = {"ch": ch or "?", "name": h["name"].strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
                    "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
-        elif cur and r["y"] - last_y <= line_h * 1.6 and r["x"] >= margin + line_h * 0.4:  # 바로 아래 + 들여쓴 줄 = 줄바꿈된 뒷부분
+        elif at_margin and i > 0:  # 머리 모양을 못 읽었어도 여백에서 시작하면 새 메시지(이름 모름). 맨 윗줄은 잘린 조각·탭 이름
+            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", r["text"][:72])
+            cur = {"ch": "?", "name": "", "body": (r["text"][colon.end():] if colon else r["text"]).strip(),
+                   "lang": r["lang"], "y": r["y"], "x": r["x"], "rows": [r]}
+            msgs.append(cur)
+            last_y = r["y"]
+        elif cur and r["y"] - last_y <= line_h * 1.6 and not at_margin:  # 바로 아래 + 들여쓴 줄 = 줄바꿈된 뒷부분
             cur["body"] += ("" if r["lang"] == "zh" else " ") + r["text"].strip()
             if r["lang"] == "zh":
                 cur["lang"] = "zh"
@@ -237,8 +258,8 @@ def settle_language(m: dict) -> None:
             if lang == "zh":
                 text = CJK_GAP.sub("", text)
             if i == 0:
-                h = HEADER.match(text)
-                text = h.group("body") if h else text
+                h = parse_header(text, True)
+                text = h["body"] if h else text
             parts.append(text.strip())
         m["body"] = ("" if lang == "zh" else " ").join(p for p in parts if p)
 
@@ -589,6 +610,8 @@ class Live:
                 decision = "skip_short"
             elif is_junk(m["body"]):
                 decision = "skip_junk"
+            elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("):
+                decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
