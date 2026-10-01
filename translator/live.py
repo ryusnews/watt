@@ -184,10 +184,9 @@ def compose(k: dict | None, chosen: dict, lang: str, line_h: int) -> str:
         acc = f"{acc} {t}" if acc else t
         m = HEAD_CUT.match(acc + " ")
         if m and m.end() >= len(acc) and parse_header(acc + " x", True):
-            if i + 1 >= len(k["w"]):
-                return chosen["t"]
-            body_x = k["w"][i + 1][1]
-            body = [w for w in chosen["w"] if w[1] >= body_x - line_h * 0.3]
+            # 본문은 머리 끝(콜론) 오른쪽부터 — 한국어 엔진의 다음 낱말로 잡으면, 한국어 엔진이 한자를 못 읽은 줄에서
+            # 본문 앞이 잘렸다('今晚冲30的有吗' → '30的有吗' 를 쓰레기로 버림, 2026-10-01)
+            body = [w for w in chosen["w"] if w[1] >= right - line_h * 0.3]
             if not body:
                 return chosen["t"]
             sep = "" if lang == "zh" else " "
