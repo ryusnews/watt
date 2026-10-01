@@ -105,12 +105,13 @@ def fix_terms(out: str, hints: dict) -> str:
     return out
 
 
-def translate(text: str, model: str = MODEL, chinese: bool = False) -> tuple[str, float]:
-    """chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
+def translate(text: str, model: str | None = None, chinese: bool = False) -> tuple[str, float]:
+    """model 을 안 주면 지금의 MODEL(통역 창이 설정에서 바꾼다) — 기본값에 MODEL 을 박으면 처음 값(12b)에 묶였다(2026-10-01).
+    chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
     한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
     text = normalize_ocr(text)
     terms = matched_terms(text, chinese)
-    out, secs = chat_json(model, system_prompt(terms, text, chinese), text, SCHEMA)
+    out, secs = chat_json(model or MODEL, system_prompt(terms, text, chinese), text, SCHEMA)
     return fix_terms(out.get("ko", "").strip(), terms), secs
 
 
