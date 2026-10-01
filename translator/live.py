@@ -413,6 +413,14 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
                    "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
+        elif cur and r["y"] - last_y <= line_h * 1.6 and r["x"] - cur["x"] >= line_h * 0.25:
+            # 바로 위 메시지의 머리 줄보다 들여쓴 줄 = 그 메시지의 뒷부분 — 화면 전체의 여백(머리 줄 x 의 가운데 값)은 화면마다
+            # 47–53px 로 흔들려, 10px 들여쓴 뒷줄을 여백에서 시작한 새 메시지로 갈랐다(여러 줄 메시지가 줄마다 번역, 2026-10-01)
+            cur["body"] += ("" if r["lang"] == "zh" else " ") + r["text"].strip()
+            if r["lang"] == "zh":
+                cur["lang"] = "zh"
+            cur["rows"].append(r)
+            last_y = r["y"]
         elif at_margin and i > 0:  # 머리 모양을 못 읽었어도 여백에서 시작하면 새 메시지(이름 모름). 맨 윗줄은 잘린 조각·탭 이름
             colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", r["text"][:72])
             cur = {"ch": "?", "name": "", "body": (r["text"][colon.end():] if colon else r["text"]).strip(),
