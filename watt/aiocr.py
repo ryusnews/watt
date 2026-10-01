@@ -105,6 +105,7 @@ class AiOcr:
             chars = s.get_modelmeta().custom_metadata_map["character"].splitlines()
             self.chars[lg] = ["\0"] + chars + [" "]  # 0 = 빈칸(CTC), 끝 = 띄어쓰기
         self.gpu = prov[0] == "DmlExecutionProvider"
+        self.want_gpu = gpu
 
     # ---- 글자 상자(DB) — 채팅 줄은 가로라 줄 띠 · 가로 토막으로 나눈다
     def boxes(self, bgr: np.ndarray) -> list[tuple[int, int, int, int]]:

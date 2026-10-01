@@ -96,8 +96,8 @@ class Ocr:
     def set_ai(self, langs: list[str], gpu: bool = True) -> None:
         """AI 보강 언어를 바꾼다. 실행 엔진 · 모델이 없거나 못 띄우면 Windows OCR 만(이유는 ai_error)."""
         langs = [lg for lg in langs if lg]
-        if self.ai and sorted(self.ai.rec) == sorted(langs):
-            return
+        if self.ai and sorted(self.ai.rec) == sorted(langs) and self.ai.want_gpu == gpu:
+            return  # 언어만 보면 GPU 끄기가 적용되지 않았다(2026-10-01)
         self.ai, self.ai_error = None, ""
         if not langs:
             return

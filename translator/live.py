@@ -465,10 +465,12 @@ class Seen:
         self.keys: deque[str] = deque(maxlen=size)
         self.at: dict[str, float] = {}  # 처음 본 시각 — 다시 올린 글인지 볼 때
 
-    def check(self, key: str) -> tuple[bool, float, str]:
-        """(새것인가, 가장 비슷한 것과의 유사도, 그 키). 새것이면 기억한다."""
+    def check(self, key: str, ignore: tuple = ()) -> tuple[bool, float, str]:
+        """(새것인가, 가장 비슷한 것과의 유사도, 그 키). 새것이면 기억한다. ignore: 비교에서 뺄 키(같은 메시지의 처음 읽기)."""
         best, best_key = 0.0, ""
         for k in self.keys:
+            if k in ignore:
+                continue
             ratio = 1.0 if k == key else difflib.SequenceMatcher(None, k, key).ratio()
             if ratio > best:
                 best, best_key = ratio, k
@@ -852,11 +854,22 @@ class Live:
                 decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
+            first_body = m["body"]
             if decision == "queued" and not m.get("pass") and not m.get("repeat") and self.ocr.last_img is not None:  # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
                 try:
                     m.update(refine(m, self.ocr.last_img, lh, self.ocr.ocr))
                 except Exception as e:  # 다시 읽기가 안 되면 처음 읽은 그대로
                     self.trace.write("error", where="refine", msg=f"{type(e).__name__}: {e}")
+                if m.get("readings"):  # 다시 읽어 글이 바뀌었으면(깨진 글 → 한국어) 언어 · 중복을 다시 본다 —
+                    # 한국어가 번역 모델로 가거나('해주것죠' → '해주겠죠'), 띄어쓰기만 다른 같은 글이 두 번 나왔다(2026-10-01)
+                    k2 = dkey(f"{m['ch']}{m['name']}{m['body']}")
+                    if k2 != m["_key"]:
+                        b2 = dkey(m["body"])
+                        dup = not self.seen.check(k2, (m["_key"],))[0] or                             (len(b2) >= 4 and not self.seen_body.check(b2, (dkey(first_body),))[0])
+                        if dup and not m.get("repeat"):
+                            decision = "dup_refined"
+                    if decision == "queued" and m["lang"] == "ko":
+                        decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             if decision == "pass_ko":  # 한국어 — 번역 없이 그대로, 순서는 번역할 글과 같은 줄로
                 decision, m["pass"] = "queued", True
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다

@@ -37,7 +37,9 @@ CHINESE_RULES = ("Chinese LFG ads shorten dungeons (怒焰 = 성난불길 협곡
                  "奶 or N = healer, T = tank, 近战 = 근접 딜러, 远程 = 원거리 딜러, 速刷 = 빠르게 도는, 开搞 = 출발, 带 = 버스. "
                  "Classes by pinyin initials: MS 사제, FS 마법사, SS 흑마법사, LR 사냥꾼, DZ 도적, XD 드루이드, SM 주술사, "
                  "QS 성기사, ZS 전사; a level glued to a class is level + class (20LR = 20레벨 사냥꾼). "
-                 "Traditional Chinese is common (補 = fill the missing spot).")
+                 "Traditional Chinese is common (補 = fill the missing spot). "
+                 "Whole pinyin words appear too: zuwo / zu wo / zw = invite me (저 초대해 주세요), FM = enchanting (마법부여), "
+                 "SK = 死矿 (죽음의 폐광). Never turn an unknown short word into a place name — keep it as written.")
 CYRILLIC_RULES = "Ukrainian is read with Russian OCR, so letters may be off (е for є, c06i = собі); still translate it."
 _CJK = re.compile(r"[一-鿿]")
 _CYR = re.compile(r"[Ѐ-ӿ]")
