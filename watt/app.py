@@ -18,7 +18,7 @@ from collections import deque
 
 import webview
 
-from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, screen, settings, system, update
+from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, report, screen, settings, system, update
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 log = logging.getLogger("watt")
@@ -54,6 +54,7 @@ class Api:
         self._today = (None, None, 0, [])  # (파일 크기, 날짜, 오늘 건수, 최근 소요 초)
         self._cmd_n = 0
         self._update: dict | None = None
+        self._shot = None  # (게임 창, 화면) — 직접 지정 · 신고용
         self._update_t = 0.0
 
     # ---- 화면에 알리기
@@ -419,6 +420,55 @@ class Api:
             img = screen.capture_game(rect["x"], rect["y"], rect["w"], rect["h"])
             return {"region": r, "preview": "data:image/png;base64," + base64.b64encode(screen.png_bytes(img)).decode()}
         return self._task("region", work)
+
+    # ---- 채팅 영역 직접 지정 · 인식 오류 신고(#14)
+    @_logged
+    def get_shot(self) -> dict:
+        """게임 창 화면(미리 보기용으로 줄여서) + 지금 찾은 영역(창 기준). 다른 창이 가려도 게임 화면."""
+        win = screen.find_game_window()
+        if not win:
+            return {"error": "게임이 꺼져 있습니다"}
+        img = screen.capture_window(win)
+        if img is None:
+            img = screen.capture(win["x"], win["y"], win["w"], win["h"])
+        self._shot = (win, img)
+        found = None
+        good = chat_region.last_good()
+        if good and (good["window"]["w"], good["window"]["h"]) == (win["w"], win["h"]):
+            found = good["chat"]
+        small = report.shrink(img, 1280)
+        return {"img": "data:image/jpeg;base64," + base64.b64encode(report.jpeg(small)).decode(),
+                "w": win["w"], "h": win["h"], "found": found, "manual": bool(good and good.get("manual")),
+                "report": report.status()}
+
+    @_logged
+    def set_region(self, rect: dict) -> dict:
+        """직접 지정한 채팅 영역 저장 — 통역 중이면 2초 안에 바뀐다."""
+        if not self._shot:
+            return {"error": "화면을 다시 불러 주세요"}
+        win, img = self._shot
+        if rect["w"] < 120 or rect["h"] < 40:
+            return {"error": "영역이 너무 작습니다"}
+        r = chat_region.from_rect(win, rect, img)
+        chat_region.save(r)
+        c = r["chat"]
+        crop = img[c["y"]:c["y"] + c["h"], c["x"]:c["x"] + c["w"]]
+        return {"region": r, "preview": "data:image/png;base64," + base64.b64encode(screen.png_bytes(crop)).decode()}
+
+    @_logged
+    def send_report(self, found: dict | None = None, picked: dict | None = None, reason: str = "region") -> dict:
+        if not self._shot:
+            return {"error": "화면을 다시 불러 주세요"}
+        win, img = self._shot
+        rect = lambda r: {k: int(r[k]) for k in ("x", "y", "w", "h")} if r else None  # noqa: E731
+        meta = {"found": rect(found), "picked": rect(picked), "window": {"x": 0, "y": 0, "w": win["w"], "h": win["h"]},
+                "image": {"x": 0, "y": 0, "w": img.shape[1], "h": img.shape[0]}, "reason": reason,
+                "lines": (chat_region.last_good() or {}).get("chat_lines_found", 0),
+                "engines": [k for k, ok in ocr.installed().items() if ok],
+                "flavor": system.FLAVORS.get(os.path.basename(os.path.dirname(win.get("path", ""))), win.get("exe"))}
+        res = report.send(img, meta)
+        log.info("report %s", res)
+        return res
 
     @_logged
     def test_translate(self, ko_text: str = "") -> dict:

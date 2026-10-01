@@ -97,6 +97,14 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .modal-card p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 .modal-card p:empty { display: none; }
 .modal-foot { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+.modal-card.wide { width: min(92vw, 980px); }
+.foot-note { margin-right: auto; align-self: center; font-size: 12px; color: var(--muted); }
+.shot { position: relative; margin-top: 12px; user-select: none; line-height: 0; border-radius: 8px; overflow: hidden; }
+.shot.drag { cursor: crosshair; }
+.shot img { width: 100%; display: block; pointer-events: none; }
+.shot .box { position: absolute; border-radius: 2px; pointer-events: none; }
+.shot .box.found { border: 1.5px dashed var(--muted); }
+.shot .box.picked { border: 2px solid var(--bronze); background: rgba(201, 165, 113, .12); }
 .icon-btn.sq { width: 34px; height: 34px; border-radius: 10px; background: var(--ctrl); color: var(--fg2); }
 .icon-btn.sq:hover { background: var(--ctrl-hi); }
 .icon-btn.lg { width: 44px; height: 44px; border-radius: 12px; background: var(--panel); color: var(--fg2); }

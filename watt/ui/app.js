@@ -268,7 +268,9 @@ const DETAIL = {
     const tips = [['i-bg', '검정 배경', '채팅 배경을 불투명한 검정으로'], ['i-type', '글자 14+', '글자 크기 14 이상'],
       ['i-eyeoff', '사라짐 끄기', '채팅 글자 사라짐(페이드) 끄기'], ['i-tab', '전용 탭', '번역할 채널만 모은 채팅 탭']]
       .map(([i, l, t]) => `<span class="chip" data-tip="${esc(t)}">${icon(i, 'sm')}${l}</span>`).join('');
-    const action = `<button class="btn ${r ? '' : 'primary'}" data-act="find_region" ${run ? 'disabled' : ''} data-tip="게임이 켜져 있어야 합니다">${icon('i-target', 'sm')}${run ? '찾는 중' : r ? '다시 찾기' : '찾기'}</button>`;
+    const action = `<span class="inline"><button class="icon-btn sq" data-act="pick_region" ${run ? 'disabled' : ''} aria-label="직접 지정" data-tip="게임 화면에서 채팅창을 끌어서 지정">${icon('i-crop', 'sm')}</button>
+      <button class="icon-btn sq" data-act="report_region" ${run ? 'disabled' : ''} aria-label="인식 오류 신고" data-tip="잘못 찾았을 때 화면을 보내 고치는 데 쓰기">${icon('i-flag', 'sm')}</button>
+      <button class="btn ${r ? '' : 'primary'}" data-act="find_region" ${run ? 'disabled' : ''} data-tip="게임이 켜져 있어야 합니다">${icon('i-target', 'sm')}${run ? '찾는 중' : r ? '다시 찾기' : '찾기'}</button></span>`;
     return [`<div class="preview">${img}</div>${run ? '<div class="progress indet"><i></i></div>' : facts}${err}<div class="chips">${tips}</div>`, action];
   },
   test() {
@@ -317,6 +319,8 @@ async function act(name, d = {}) {
   if (name === 'pick_folder') return pickFolder();
   if (name === 'install_addon') { const r = await call('install_addon', S.selGame); toast(`글꼴 애드온 ${r.version || ''} 설치됨. 게임을 다시 켜 주세요`, 'ok'); return loadGames().then(() => refresh(true)); }
   if (name === 'find_region') { S.results.region = null; return call('find_region'); }
+  if (name === 'pick_region') return openShot('pick');
+  if (name === 'report_region') return openShot('report');
   if (name === 'test_translate') { S.testKo = ($('#test-ko') || {}).value || ''; S.results.test = null; return call('test_translate', S.testKo); }
 }
 
@@ -423,6 +427,51 @@ async function applyUpdate() {
   S.progress.update = { done: 0, total: 0 }; renderUpdate();
   call('apply_update');
 }
+
+/* ---------- 채팅 영역 직접 지정 · 인식 오류 신고(#14) ---------- */
+async function openShot(mode) {
+  const s = await call('get_shot');
+  if (!s || s.error) return toast((s && s.error) || '게임 화면을 받지 못했습니다', 'err');
+  const box = $('#pick-box'), found = $('#pick-found'), shot = $('#pick-shot'), yes = $('#pick-yes');
+  const place = (el, r) => { el.hidden = !r; if (r) Object.assign(el.style, { left: `${r.x / s.w * 100}%`, top: `${r.y / s.h * 100}%`, width: `${r.w / s.w * 100}%`, height: `${r.h / s.h * 100}%` }); };
+  let picked = mode === 'report' ? s.found : null;
+  $('#pick-img').src = s.img;
+  place(found, mode === 'pick' ? s.found : null);
+  place(box, picked);
+  $('#pick-title').textContent = mode === 'pick' ? '채팅 영역 직접 지정' : '인식 오류 신고';
+  $('#pick-text').textContent = mode === 'pick' ? '채팅창을 끌어서 고르세요' : '이 화면을 보내 채팅 영역 자동 찾기를 고치는 데 씁니다';
+  const blocked = mode === 'report' && !s.report.can;
+  $('#pick-note').textContent = blocked ? `이미 보냈습니다 · ${s.report.wait_h}시간 뒤 다시` : mode === 'report' ? '게임 화면 1장 · 다른 사람 이름이 보일 수 있음 · 30일 뒤 삭제' : '';
+  yes.textContent = mode === 'pick' ? '저장' : '보내기';
+  yes.disabled = mode === 'pick' || blocked;
+  shot.classList.toggle('drag', mode === 'pick');
+  const at = (e) => { const b = shot.getBoundingClientRect(); return { x: Math.max(0, Math.min(b.width, e.clientX - b.left)) / b.width * s.w, y: Math.max(0, Math.min(b.height, e.clientY - b.top)) / b.height * s.h }; };
+  shot.onmousedown = mode !== 'pick' ? null : (e) => {
+    const a = at(e);
+    const move = (ev) => { const c = at(ev); picked = { x: Math.min(a.x, c.x), y: Math.min(a.y, c.y), w: Math.abs(c.x - a.x), h: Math.abs(c.y - a.y) }; place(box, picked); yes.disabled = picked.w < 120 || picked.h < 40; };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
+  $('#pick').hidden = false;
+  const close = () => { $('#pick').hidden = true; shot.onmousedown = null; };
+  $('#pick-no').onclick = close;
+  yes.onclick = async () => {
+    yes.disabled = true;
+    if (mode === 'pick') {
+      const r = await call('set_region', picked);
+      if (r.error) { yes.disabled = false; return toast(r.error, 'err'); }
+      close(); S.regionPreview = r.preview; toast('채팅 영역을 저장했습니다', 'ok'); refresh(true);
+      if (s.report.can && await confirmBox('인식 오류 신고', '이 화면을 보내 자동 찾기를 고치는 데 쓸까요? 게임 화면 1장 · 30일 뒤 삭제', '보내기', '나중에', false)) sendReport(s.found, picked);
+    } else { close(); sendReport(s.found, picked); }
+  };
+}
+async function sendReport(found, picked) {
+  const r = await call('send_report', found, picked, 'region');
+  if (r && r.ok) toast('보냈습니다. 고마워요', 'ok');
+  else if (r && r.already) toast(`이미 보냈습니다 · ${r.wait_h}시간 뒤 다시`);
+  else toast((r && r.error) || '보내지 못했습니다', 'err');
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#pick').hidden) $('#pick-no').click(); });
 
 /* ---------- 확인 창 ---------- */
 function confirmBox(title, text = '', yes = '지우기', no = '취소', danger = true) {
@@ -602,7 +651,9 @@ function mockApi() {
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),
-    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }), restart_update: () => ok({ restarting: '0.1.3' }),
+    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }),
+    get_shot: () => ok({ img: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#2b3240"/><rect x="10" y="560" width="520" height="260" fill="#000" opacity=".6"/></svg>'), w: 1600, h: 900, found: { x: 10, y: 560, w: 520, h: 260 }, report: { can: true, wait_h: 0 } }),
+    set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),

@@ -125,6 +125,28 @@ def find(img: np.ndarray | None = None, window: dict | None = None) -> dict:
     }
 
 
+def from_rect(window: dict, rect: dict, img: np.ndarray) -> dict:
+    """사용자가 게임 화면에서 직접 지정한 채팅 영역(창 기준 좌표) → 저장 형식. 줄 높이는 그 안을 읽어서."""
+    H, W = img.shape[:2]
+    x, y = max(0, int(rect["x"])), max(0, int(rect["y"]))
+    w, h = min(W - x, int(rect["w"])), min(H - y, int(rect["h"]))
+    hs = []
+    for res in Ocr(["zh-Hans-CN", "ko"]).recognize(screen.upscale2(img[y:y + h, x:x + w])).values():
+        hs += [l["b"] - l["y"] for l in Ocr.lines_of(res, 2)]
+    line_h = int(round(float(np.median(hs)))) if hs else 14
+    return {"source": window.get("exe"), "manual": True,
+            "window": {"w": W, "h": H, "screen_x": window["x"], "screen_y": window["y"]},
+            "chat": {"x": x, "y": y, "w": w, "h": h},
+            "chat_ratio": {"x": round(x / W, 4), "y": round(y / H, 4), "w": round(w / W, 4), "h": round(h / H, 4)},
+            "line_height": line_h, "chat_lines_found": len(hs) // 2}
+
+
+def save(r: dict) -> None:
+    paths.ensure()
+    for p in (paths.REGION, paths.REGION_GOOD):
+        p.write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def usable(r: dict) -> bool:
     """채팅 줄이 한두 개뿐인 순간에는 영역이 두 줄 크기로 잡힌다(2026-09-30: 594×39)."""
     return r["chat"]["h"] >= 5 * r["line_height"] and r["chat"]["w"] >= 250
