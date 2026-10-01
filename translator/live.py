@@ -302,6 +302,14 @@ def norm(s: str) -> str:
     return re.sub(r"[\W_]+", "", s).lower()
 
 
+_LOOKALIKE = str.maketrans({"i": "l", "1": "l", "|": "l", "0": "o"})
+
+
+def dkey(s: str) -> str:
+    """중복 판단용 키 — OCR 이 헷갈리는 글자를 하나로(lfg · Ifg · 1fg). 같은 글이 두 번 번역되던 문제(lfg rfk, 2026-10-01)."""
+    return norm(s).translate(_LOOKALIKE)
+
+
 class Seen:
     """최근 메시지(흔들리는 OCR 을 감안해 비슷하면 같은 것으로)."""
 
@@ -502,6 +510,7 @@ class Live:
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
         self.seen = Seen()
+        self.shown: set[str] = set()  # 통역 창에 올린 글(중복 키) — 안 올린 글을 다시 올리면 한 번은 번역
         self.prev_keys: list[tuple[str, int]] = []  # 바로 앞 화면의 (메시지, 위치) — 새 메시지가 나타나는 쪽 판단
         self.seen_body = Seen(30)  # 이름을 매번 다르게 읽어도(舜应盖特 · 舜廐 盖碍) 같은 글이면 한 번만
         self.ads = AdFilter()
@@ -617,15 +626,16 @@ class Live:
         queued, events = [], []
         checked = []
         for m in msgs:
-            key = norm(f"{m['ch']}{m['name']}{m['body']}")
+            key = dkey(f"{m['ch']}{m['name']}{m['body']}")
             if not key:
                 continue
             new, sim, near = self.seen.check(key)
-            body_key = norm(m["body"])
+            body_key = dkey(m["body"])
             if new and len(body_key) >= 4:
                 new_b, sim_b, near_b = self.seen_body.check(body_key)
                 if not new_b:
                     new, sim, near = False, sim_b, near_b
+            m["_key"] = key
             checked.append((m, new, sim, near))
         # 새 메시지는 새 글이 나타나는 쪽(기본 아래, 설정에 따라 위)에만 생긴다. 바로 앞 화면에도 있던 메시지보다 옛 쪽에서
         # '새로' 읽힌 것은 흐려지며 사라지는 옛 줄을 OCR 이 다르게 읽은 것 — 번역하지 않는다(2026-10-01: 채팅창을 키우면 옛 글을
@@ -640,6 +650,9 @@ class Live:
         newest_top = top_mode
         edge = (min(stay) if newest_top else max(stay)) if stay else None
         for i, (m, new, sim, near) in enumerate(checked):
+            if not new and not self.first and near not in self.shown and \
+                    (edge is None or (i < edge if newest_top else i > edge)):
+                new = True  # 켰을 때 보이던(번역하지 않은) 글을 다시 올린 것 — 한 번은 번역(怒焰来T 4=1 을 수십 번 올려도 안 보이던 문제)
             if not new:
                 if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
                     events.append(("dup", {"body": m["body"], "near": near, "sim": round(sim, 3), "lang": m["lang"]}))
@@ -668,6 +681,8 @@ class Live:
                     self.log_item(m, "")
                     if decision == "ad_fold":
                         self.events.put(("add", m))
+            if decision == "queued" or decision.startswith("ad_"):
+                self.shown.update((m["_key"], dkey(m["body"])))
             if decision == "queued":
                 m["t_enq"] = time.monotonic()
                 queued.append(m)
