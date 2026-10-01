@@ -35,7 +35,9 @@ LATIN = re.compile(r"[A-Za-z]")
 CYR_DISTINCT = re.compile(r"[БГДЖЗИЙЛФЦЧШЩЪЫЬЭЮЯбвгдёжзийлфцчшщъыьэюяЄєЇїІіҐґ]")
 
 
-TAGS = re.compile(r"<[^>]*>|\[[^\]]*\]")  # <길드명> [이름] — 라틴 길드명이 키릴 비율을 끌어내리지 않게
+# <길드명> — 라틴 길드명이 키릴 비율을 끌어내리지 않게. [ ] 안은 센다: 머리([이름])는 body_of 가 떼고, 본문의 [링크]는
+# 그 사람 언어(중국어 클라이언트의 [哀嚎洞穴])라 빼면 '[哀嚎洞穴] 来T' 가 중국어로 판정되지 않았다(2026-10-01)
+TAGS = re.compile(r"<[^>]*>")
 
 
 CYR_WORD = re.compile(r"[Ѐ-ӿ]{3,}")
@@ -44,7 +46,7 @@ CYR_WORD = re.compile(r"[Ѐ-ӿ]{3,}")
 def looks_russian(text: str) -> bool:
     """키릴 60%↑ + 러시아어에만 있는 글자 1개↑ + 키릴 낱말(3자↑) 2개↑. 마지막 조건: 러시아어 엔진이 짧은 영어를
     닮은 키릴로 읽은 줄(LF3M DPS DM → Г-ЗМ DPS ОМ, any → апу)을 러시아어로 보지 않게(2026-10-01 모니터링)."""
-    core = TAGS.sub(" ", text)
+    core = re.sub(r"\[[^\]]*\]", " ", TAGS.sub(" ", text))  # [링크]는 빼고 — 영어 글 속 러시아어 링크(LFM [Чол'арук])
     cyr, lat = len(CYRILLIC.findall(core)), len(LATIN.findall(core))
     return (cyr >= 3 and cyr >= 0.6 * (cyr + lat) and len(CYR_DISTINCT.findall(core)) >= 1
             and len(CYR_WORD.findall(core)) >= 2)
