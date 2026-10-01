@@ -21,6 +21,7 @@ from watt import tkstyle as tks
 from watt.ocr import Reader
 
 from . import incoming
+from .adfilter import AdFilter
 
 LOG = paths.LOGS / "live.jsonl"
 INTERVAL = 0.5
@@ -366,6 +367,7 @@ class Overlay:
         self.text.tag_configure("ko", foreground=tks.FG)
         self.text.tag_configure("orig", foreground=tks.FAINT, font=(tks.SANS, small))
         self.text.tag_configure("pending", foreground=tks.DIM)
+        self.text.tag_configure("ad", foreground=tks.FAINT, font=(tks.SANS, small))
 
     def apply(self, cfg: dict) -> None:
         """런처에서 바꾼 설정 — 투명도·글자 크기·줄 수·원문 보기."""
@@ -424,6 +426,10 @@ class Overlay:
                 self.text.insert("end", "\n")
             lang = it["lang"] if it["lang"] in tks.LANG else "en"
             self.text.insert("end", lang.upper(), "lang_" + lang)
+            if it.get("kind") == "ad" and not it.get("ko"):  # 접은 광고 — 한 줄
+                self.text.insert("end", f"  {it['name']}  ", "meta")
+                self.text.insert("end", "광고", "ad")
+                continue
             self.text.insert("end", f"  {it['name']}\n", "meta")
             if it.get("ko"):
                 self.text.insert("end", it["ko"], "ko")
@@ -453,6 +459,7 @@ class Live:
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
         self.seen = Seen()
+        self.ads = AdFilter()
         self.cache: dict[str, str] = {}
         self.stats = {"frames": 0, "changed": 0, "ocr_ms": 0, "translated": 0, "tr_s": 0.0}
         self.first = True
@@ -584,10 +591,20 @@ class Live:
                 decision = "skip_junk"
             else:
                 decision = "queued"
+            if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
+                ad = self.ads.check(m["name"], m["body"])
+                m["kind"], m["ad"] = ad["kind"], ad
+                if decision == "queued" and ad["kind"] == "ad" and self.cfg.get("ad_filter", "fold") != "show":
+                    decision = "ad_" + self.cfg.get("ad_filter", "fold")  # 번역하지 않는다
+                    self.log_item(m, "")
+                    if decision == "ad_fold":
+                        self.events.put(("add", m))
+            if decision == "queued":
                 m["t_enq"] = time.monotonic()
                 queued.append(m)
             events.append(("msg", {"id": m["id"], "ch": m["ch"], "name": m["name"], "lang": m["lang"], "body": m["body"],
-                                   "decision": decision, "near_sim": round(sim, 3),
+                                   "decision": decision, "near_sim": round(sim, 3), "kind": m.get("kind"),
+                                   "ad": m.get("ad"),
                                    "rows": [{"lang": x["lang"], "x": x["x"], "y": x["y"], "feat": x["feat"], "cand": x["cand"]}
                                             for x in m["rows"]]}))
         for o in orphans:  # 머리를 못 알아본 줄 — 같은 글은 한 번만
@@ -658,11 +675,16 @@ class Live:
             self.trace.write("tr", id=m.get("id"), lang=m["lang"], body=m["body"], ko=m["ko"], cached=cached,
                              queue_s=round(queue_wait, 2), llm_s=round(sec, 2), total_s=round(queue_wait + m["wait_s"], 2),
                              backlog=self.jobs.qsize(), error=error)
-            with LOG.open("a", encoding="utf-8") as f:
-                f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ch": m["ch"], "name": m["name"], "lang": m["lang"],
-                                    "body": m["body"], "ko": m["ko"], "sec": round(sec, 2), "cached": cached},
-                                   ensure_ascii=False) + "\n")
+            self.log_item(m, m["ko"], round(sec, 2), cached)
             self.events.put(("update", m))
+
+    @staticmethod
+    def log_item(m: dict, ko: str, sec: float = 0.0, cached: bool = False) -> None:
+        """런처 피드가 읽는 번역 기록."""
+        with LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ch": m["ch"], "name": m["name"], "lang": m["lang"],
+                                "body": m["body"], "ko": ko, "sec": sec, "cached": cached, "kind": m.get("kind")},
+                               ensure_ascii=False) + "\n")
 
     def poll(self):
         while not self.events.empty():

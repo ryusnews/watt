@@ -218,7 +218,7 @@ class Api:
         for line in reversed(tail):
             try:
                 d = json.loads(line)
-                out.append({k: d.get(k) for k in ("t", "ch", "name", "lang", "body", "ko", "sec")})
+                out.append({k: d.get(k) for k in ("t", "ch", "name", "lang", "body", "ko", "sec", "kind")})
             except ValueError:
                 pass
         return out

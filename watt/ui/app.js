@@ -117,7 +117,7 @@ function renderFeed() {
   const showOrig = true;
   setHTML($('#feed'), items.map((f) => `
     <article class="item"><span class="code ${esc(f.lang)}">${esc((f.lang || '').toUpperCase())}</span>
-      <div><div class="ko">${esc(f.ko)}</div>${showOrig ? `<div class="orig"><b>${esc(f.name)}</b>${esc(f.body)}</div>` : ''}</div>
+      <div>${f.kind === 'ad' && !f.ko ? '<div class="ko ad">광고</div>' : `<div class="ko">${esc(f.ko)}</div>`}${showOrig ? `<div class="orig"><b>${esc(f.name)}</b>${esc(f.body)}</div>` : ''}</div>
       <span class="time">${esc((f.t || '').slice(11, 16))}</span></article>`).join(''));
   $('#feed-empty').hidden = items.length > 0;
 }
@@ -329,6 +329,7 @@ function renderSettings() {
   $('#set-gamedir').dataset.tip = cur || '게임 폴더를 지정해 주세요';
   $$('#set-lang button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_lang));
   $$('#set-mode button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_mode));
+  $$('#set-ads button').forEach((b) => b.classList.toggle('on', b.dataset.v === (c.ad_filter || 'fold')));
   const sel = $('#set-model');
   const names = S.state.ollama.models.map((m) => m.name);
   if (!names.includes(c.model)) names.unshift(c.model);
@@ -487,6 +488,7 @@ function bind() {
   });
   // 번역 설정
   $('#set-lang').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_lang: b.dataset.v }); renderSettings(); } };
+  $('#set-ads').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ ad_filter: b.dataset.v }); renderSettings(); } };
   $('#set-mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_mode: b.dataset.v }); renderSettings(); } };
   $('#set-model').onchange = (e) => save({ model: e.target.value });
   $('#set-preload').onclick = () => { save({ preload: !S.state.settings.preload }); renderSettings(); };
@@ -551,7 +553,7 @@ function bind() {
 /* ---------- 미리보기용 가짜 API (브라우저로 열었을 때) ---------- */
 function mockApi() {
   const settings = { model: 'gemma4:12b', out_lang: 'en', out_mode: 'clipboard', overlay_font: 11, overlay_alpha: 0.88, overlay_lines: 10,
-    show_original: false, keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
+    show_original: false, ad_filter: 'fold', keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
   const running = { live: true, input: true };
   const feed = [
     { t: '2026-10-01T00:05:46', lang: 'zh', name: '青山', body: '20LR 求组 AH', ko: '20레벨 사냥꾼, 통곡의 동굴 파티 찾음' },
@@ -561,6 +563,7 @@ function mockApi() {
     { t: '2026-09-30T23:58:13', lang: 'en', name: 'Thornvale', body: 'LF tank for WC, pst', ko: '통곡의 동굴 탱커 구함, 귓속말 주세요' },
     { t: '2026-09-30T23:57:30', lang: 'en', name: 'Kaelric', body: 'where do u get that quest', ko: '방금 그 퀘스트 어디서 받아요?' },
     { t: '2026-09-30T23:55:02', lang: 'zh', name: '医生姐姐', body: '奶求组 NY 任务队', ko: '힐러, 성난불길 협곡 퀘스트 파티 찾음' },
+    { t: '2026-09-30T23:54:40', lang: 'zh', name: '收白菜出白菜', body: '无限服老友交流群 | 攻略 / 组队 … 加 V ： QCW1392010', ko: '', kind: 'ad' },
   ];
   const state = () => ({
     app: { version: '0.1.0', full: 'WoW AI Translation Tool' }, settings,

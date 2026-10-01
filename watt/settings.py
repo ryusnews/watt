@@ -12,6 +12,7 @@ DEFAULTS = {
     "overlay_alpha": 0.88,
     "overlay_lines": 10,
     "show_original": False,      # 통역 창에 원문도 보이기
+    "ad_filter": "fold",         # 광고: show 보이기 | fold 접기(번역 안 함) | hide 숨기기
     "hotkey_input": "Ctrl+Shift+K",
     "game_dir": "",              # 고른 게임 폴더(예: ...\\World of Warcraft\\_classic_) — 애드온을 넣을 곳
     "wow_roots": [],             # 사용자가 직접 지정한 WoW 설치 폴더(자동으로 못 찾을 때)

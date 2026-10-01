@@ -180,6 +180,7 @@ kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; backgr
 .item .code { font: 600 11.5px var(--mono); padding-top: 3px; }
 .item .ko { font-size: 14.5px; user-select: text; }
 .item .ko.pending { color: var(--dim); }
+.item .ko.ad { color: var(--faint); font-size: 12.5px; }
 .item .orig { font-size: 12px; color: var(--faint); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
 .item .orig b { font-weight: 400; color: var(--muted); margin-right: 8px; }
 .item .time { font: 500 11.5px var(--mono); color: var(--faint); padding-top: 3px; }

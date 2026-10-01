@@ -1,0 +1,21 @@
+{"note": "광고 가려내기 시험. 기록에서 본 것(seen)과 일부러 만든 것. 디스코드·QQ 로 모집하는 파티·길드는 광고가 아니다.",
+ "cases": [
+  {"name": "Nic Doo", "body": "LFM BFD need tank, discord.gg/abc123 for voice", "kind": "party"},
+  {"name": "Slayeron", "body": "<Beyond> is recruiting exceptional players for our core 40-man roster. NA, Semi-HC, 10/20/40 raids, PvP, dungeon groups, active discord, events & more. discord.gg/beyond", "kind": "guild", "seen": true},
+  {"name": "Touzi Gongsi", "body": "备战国服，招收所有热爱魔兽的小伙伴，欢迎新老玩家，私聊或喊话入会。组织 V 群： yxsj8887 Q群： 237345100", "kind": "guild", "seen": true},
+  {"name": "凌速大师", "body": "< 奥术秘社 > 大型多人在线公会备战国服！诚邀爱聊天、爱副本，爱战场的部落兄弟加人！扰屏见谅！", "kind": "guild", "seen": true},
+  {"name": "Xiaot Lr", "body": "NY 任务队来 T 或者奶 DPS 来个有幽暗任务的 345 进组 V: abc12345", "kind": "party"},
+  {"name": "Kalle", "body": "WTS [Enchanting] 225/225 - neck str/agi + revelation & more", "kind": "trade", "seen": true},
+  {"name": "Tb Clickerer", "body": "WTS TB Summons to Thunder bluff / RFC quests selling TB Sum ports PM", "kind": "trade", "repeat": 5, "seen": true},
+  {"name": "Волк", "body": "Набор в гильдию <Стая>, рейды ПН/СР, discord.gg/staya", "kind": "guild"},
+  {"name": "Бродяга", "body": "Кто в Огненную пропасть?", "kind": "chat"},
+  {"name": "Kolkuth", "body": "<ES> Guild Espanola recluta gente de cara a raidear en esta nueva aventura si quieres entrar en <LoWoCraft> /w", "kind": "guild", "seen": true},
+  {"name": "Dynamo", "body": "Dynamo Donnerfels rekrutiert für die Beta und Full Release, erfahrene Raidleitung", "kind": "guild", "seen": true},
+  {"name": "Lii Lei", "body": "有木有公会 + + + + 有木有公会 + + + +", "kind": "guild", "seen": true},
+  {"name": "Goldy", "body": "Cheap gold 1000g = 5$ visit www.wowgold-shop.com fast delivery", "kind": "ad"},
+  {"name": "代练工作室", "body": "代练1-60 价格优惠 加微信: wow8888", "kind": "ad"},
+  {"name": "Seller", "body": "WTS gold PayPal only, whisper me", "kind": "ad"},
+  {"name": "Катя Мизулина", "body": "Ищешь компанию? Лучшее сообщество по WOW Forever ждёт тебя! Гильдии, мемы, поиск друзей, чаты, новости и розыгрыш 30$ и 3 месяцев сабки: discord.gg/ForeverWOW", "kind": "ad", "seen": true},
+  {"name": "收白菜出白菜", "body": "无限服老友交流群 | 攻略 / 组队 / 资源互换齐全，无乱七八糟广告，插件共享，想找稳定队友直接加 V ： QCW1392010 备用 V ： Lxqwzn 进裙", "kind": "ad", "seen": true},
+  {"name": "收白菜出白菜", "body": "无限服老丿全，无乱七八糟广告，插件加 V ： QCW1392010 备用 V", "kind": "ad", "after_previous": true, "seen": true}
+ ]}
