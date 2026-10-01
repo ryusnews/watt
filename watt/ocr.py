@@ -103,6 +103,38 @@ class Ocr:
                       for w in words]}
 
 
+def shift_of(old: np.ndarray, new: np.ndarray, min_iou: float = 0.5) -> int | None:
+    """채팅이 위로 얼마나 밀렸나(픽셀) — 글자 픽셀(밝은 점)이 얼마나 겹치나로 맞춘다. 깔끔히 맞지 않으면 None(전체 다시 읽기).
+    글자 크기 · 색과 상관없이 같은 화면 안에서만 비교한다. 흐려지는 위쪽 줄은 빼고 본다."""
+    if old.shape != new.shape:
+        return None
+    a, b = screen.luminance(old) > 110, screen.luminance(new) > 110
+    h = a.shape[0]
+    top = h // 4  # 흐려지는 옛 줄
+
+    def iou(dy):
+        x, y = a[dy + top:], b[top:h - dy]
+        u = np.logical_or(x, y).sum()
+        return np.logical_and(x, y).sum() / u if u else 0.0
+    base = iou(0)
+    if base >= 0.98:
+        return None  # 밀리지 않음(제자리에서 조금 바뀜)
+    rows_a, rows_b = a.sum(1), b.sum(1)  # 줄 윤곽으로 후보를 먼저 좁힌다
+    cands = sorted(range(1, h // 2), key=lambda dy: np.abs(rows_a[dy:] - rows_b[:h - dy]).mean())[:6]
+    best, dy = max((iou(d), d) for d in cands)
+    # 오래된 줄이 흐려지며 픽셀이 바뀌어 밀린 뒤에도 ~70% 만 겹친다(밀리지 않았다면 ~13%) — 상대적으로 본다
+    return dy if best >= min_iou and best >= 3 * base else None
+
+
+def gap_above(img: np.ndarray, y: int, line_h: int) -> int:
+    """y 에서 위로 올라가며 글자가 없는 가로줄(줄 사이 빈 곳) — 띠를 거기서 잘라야 글자 줄이 반쪽으로 잘리지 않는다."""
+    rows = (screen.luminance(img) > 110).sum(1)
+    for yy in range(min(y, len(rows) - 1), max(0, y - line_h * 2), -1):
+        if rows[yy] == 0:
+            return yy
+    return -1  # 빈 곳을 못 찾으면 전체 다시 읽기
+
+
 class Reader:
     """채팅 영역을 읽는다 — 글자 모양이 바뀌었을 때만 OCR."""
 
@@ -112,6 +144,7 @@ class Reader:
         self.scale = scale
         self.last_sig = None
         self.last_img = None
+        self.last_lines = None
         self.ready = {"ready": True, "engines": list(self.ocr.engines)}
 
     def read(self, region: dict, force: bool = False) -> dict:
@@ -122,12 +155,29 @@ class Reader:
         min_diff = max(12, int(sig.size * 0.001))
         if 0 <= diff <= min_diff and not force:
             return {"same": True}
+        prev_img, prev_lines = self.last_img, self.last_lines
         self.last_sig, self.last_img = sig, img
+        dy = shift_of(prev_img, img) if prev_img is not None and prev_lines and not force else None
+        line_h = int(region.get("line_h") or 14)
+        band = gap_above(img, img.shape[0] - dy - int(line_h * 1.5), line_h) if dy else -1
+        if dy and band > line_h * 2:
+            # 채팅이 dy 만큼 위로 밀렸을 뿐 — 새로 나타난 아래 띠만 읽고, 위는 지난 결과를 옮겨 쓴다(32줄 ~300ms → 몇 줄)
+            lines = self._read(img[band:], band)
+            for k, old in prev_lines.items():
+                kept = [{**l, "y": l["y"] - dy} for l in old if l["y"] - dy >= 0 and l["y"] - dy + l.get("h", line_h) <= band]
+                lines[k] = kept + lines.get(k, [])
+            how = "band"
+        else:
+            lines, how = self._read(img, 0), "full"
+        self.last_lines = lines
+        return {"same": False, "ms": int((time.perf_counter() - t0) * 1000), "diff": diff, "lines": lines, "how": how,
+                "shift": dy}
+
+    def _read(self, img, top: int) -> dict:
         big = screen.upscale2(img) if self.scale == 2 else img
         res = self.ocr.recognize(big)
-        lines = {k: [{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")} for l in Ocr.lines_of(r, self.scale)]
-                 for k, r in res.items()}
-        return {"same": False, "ms": int((time.perf_counter() - t0) * 1000), "diff": diff, "lines": lines}
+        return {k: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top}
+                    for l in Ocr.lines_of(r, self.scale)] for k, r in res.items()}
 
     def save_last(self, path: Path) -> bool:
         if self.last_img is None:
