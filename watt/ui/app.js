@@ -332,6 +332,7 @@ function renderSettings() {
   $$('#set-lang button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_lang));
   $$('#set-mode button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_mode));
   $$('#set-ads button').forEach((b) => b.classList.toggle('on', b.dataset.v === (c.ad_filter || 'fold')));
+  $$('#set-newest button').forEach((b) => b.classList.toggle('on', b.dataset.v === (c.chat_newest || 'bottom')));
   const sel = $('#set-model');
   const names = S.state.ollama.models.map((m) => m.name);
   if (!names.includes(c.model)) names.unshift(c.model);
@@ -497,6 +498,7 @@ function bind() {
   });
   // 번역 설정
   $('#set-lang').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_lang: b.dataset.v }); renderSettings(); } };
+  $('#set-newest').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ chat_newest: b.dataset.v }); renderSettings(); } };
   $('#set-ads').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ ad_filter: b.dataset.v }); renderSettings(); } };
   $('#set-mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_mode: b.dataset.v }); renderSettings(); } };
   $('#set-model').onchange = (e) => save({ model: e.target.value });
@@ -562,7 +564,7 @@ function bind() {
 /* ---------- 미리보기용 가짜 API (브라우저로 열었을 때) ---------- */
 function mockApi() {
   const settings = { model: 'gemma4:12b', out_lang: 'en', out_mode: 'clipboard', overlay_font: 11, overlay_alpha: 0.88, overlay_lines: 10,
-    show_original: false, ad_filter: 'fold', keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
+    show_original: false, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
   const running = { live: true, input: true };
   const feed = [
     { t: '2026-10-01T00:05:46', lang: 'zh', name: '青山', body: '20LR 求组 AH', ko: '20레벨 사냥꾼, 통곡의 동굴 파티 찾음' },

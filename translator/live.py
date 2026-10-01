@@ -500,6 +500,7 @@ class Live:
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
         self.seen = Seen()
+        self.prev_keys: list[tuple[str, int]] = []  # 바로 앞 화면의 (메시지, 위치) — 새 메시지가 나타나는 쪽 판단
         self.seen_body = Seen(30)  # 이름을 매번 다르게 읽어도(舜应盖特 · 舜廐 盖碍) 같은 글이면 한 번만
         self.ads = AdFilter()
         self.cache: dict[str, str] = {}
@@ -612,6 +613,7 @@ class Live:
         orphans: list = []
         msgs = build_messages(rows, lh, orphans)
         queued, events = [], []
+        checked = []
         for m in msgs:
             key = norm(f"{m['ch']}{m['name']}{m['body']}")
             if not key:
@@ -622,6 +624,20 @@ class Live:
                 new_b, sim_b, near_b = self.seen_body.check(body_key)
                 if not new_b:
                     new, sim, near = False, sim_b, near_b
+            checked.append((m, new, sim, near))
+        # 새 메시지는 새 글이 나타나는 쪽(기본 아래, 설정에 따라 위)에만 생긴다. 바로 앞 화면에도 있던 메시지보다 옛 쪽에서
+        # '새로' 읽힌 것은 흐려지며 사라지는 옛 줄을 OCR 이 다르게 읽은 것 — 번역하지 않는다(2026-10-01: 채팅창을 키우면 옛 글을
+        # 번역). 기준을 '이미 본 글'로 하면 같은 사람이 채널만 바꿔 다시 쓴 글(아래에 새로 나타남)에 진짜 새 글이 묻힌다
+        # 기준: 앞 화면에 같은 글이 같은 자리나 더 아래에 있던 것(채팅은 위로 밀리기만 한다). 아래에 새로 나타난 반복 글은 아님
+        cur = [(norm(f"{m['ch']}{m['name']}{m['body']}"), m["y"]) for m, *_ in checked]
+        top_mode = self.cfg.get("chat_newest", "bottom") == "top"
+        stay = [i for i, (k, y) in enumerate(cur)
+                if any((k == q or difflib.SequenceMatcher(None, k, q).ratio() >= 0.95)
+                       and ((py <= y + 2) if top_mode else (py >= y - 2)) for q, py in self.prev_keys)]
+        self.prev_keys = cur
+        newest_top = top_mode
+        edge = (min(stay) if newest_top else max(stay)) if stay else None
+        for i, (m, new, sim, near) in enumerate(checked):
             if not new:
                 if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
                     events.append(("dup", {"body": m["body"], "near": near, "sim": round(sim, 3), "lang": m["lang"]}))
@@ -630,6 +646,8 @@ class Live:
             m["id"] = f"{self.trace.sid}-{self.msg_no}"
             if self.first:
                 decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
+            elif edge is not None and (i > edge if newest_top else i < edge):
+                decision = "skip_old"  # 앞 화면에도 있던 메시지보다 옛 쪽
             elif m["lang"] == "ko":
                 decision = "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
