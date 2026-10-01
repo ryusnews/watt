@@ -20,7 +20,8 @@ BASE = ("You translate one World of Warcraft Classic chat message into natural K
         "summ = 소환). Use the official Korean client names for dungeons, zones and classes. "
         "Prices 20s / 5g / 50c = 20실버, 5골드, 50코퍼. "
         "Never add words or requests that are not in the message; if parts are unreadable OCR noise, translate only the "
-        "readable parts. Keep player names, numbers and [bracketed links] unchanged. Put only the translation in 'ko'.")
+        "readable parts. Keep player names, numbers and [bracketed links] unchanged; Korean text in [brackets] is an in-game "
+        "quest/item link already shown in Korean — copy it exactly. Put only the translation in 'ko'.")
 # 글자 종류에 따라 붙이는 규칙 — 전부 넣으면 870토큰이 되어 게임 중 번역이 3~7초로 느려졌다(2026-10-01)
 LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/role and wants to JOIN a group "
                "(Tank lfg WC = 탱커가 통곡의 동굴 파티를 찾음); 'LF/LFM <role>' = recruiting that role. "

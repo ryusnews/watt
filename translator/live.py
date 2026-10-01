@@ -127,6 +127,7 @@ def _channel(m: re.Match) -> str | None:
 
 
 BRACKET = re.compile(r"\[[^\[\]]{2,60}\]")
+HANGUL_LINK = re.compile(r"\[[^\[\]]*[가-힣][^\[\]]*\]")  # [늙은 불꽃눈] — 한국어 클라이언트가 보여 주는 링크
 
 
 def _clean_cyrillic(s: str) -> bool:
@@ -187,9 +188,16 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         def by(src):
             return next((l for l in row if l in src), None)
         k, z, e, r = by(ko), by(zh), by(en), by(ru)
-        feat = {"hangul": len(HANGUL.findall(body_of(k["t"]))) if k else 0, "ko": bool(k and looks_korean(body_of(k["t"]))),
-                "zh": bool(z and looks_chinese(body_of(z["t"]))), "ru": bool(r and looks_russian(body_of(r["t"]))),
-                "en_garbled": bool(e and english_garbled(body_of(e["t"])))}
+        # 퀘스트 · 아이템 링크는 보는 사람의 클라이언트 언어(한국어)로 보인다 — 보낸 사람 언어와 무관하므로 언어 판정에서 뺀다.
+        # 'LFM [늙은 불꽃눈]' 을 한국어로 판정해 건너뛰거나, 중국어 엔진이 링크를 가짜 한자([旨吕罟])로 읽어 중국어로 갈랐다(2026-10-01)
+        links = HANGUL_LINK.findall(body_of(k["t"])) if k else []
+
+        def ft(c):
+            b_ = body_of(c["t"])
+            return re.sub(r"\[[^\[\]]*\]", " ", b_) if links else b_
+        feat = {"hangul": len(HANGUL.findall(ft(k))) if k else 0, "ko": bool(k and looks_korean(ft(k))),
+                "zh": bool(z and looks_chinese(ft(z))), "ru": bool(r and looks_russian(ft(r))),
+                "en_garbled": bool(e and english_garbled(ft(e)))}
         if feat["ko"]:
             chosen, lang = k, "ko"
         elif feat["zh"]:
@@ -201,6 +209,13 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         text = CJK_GAP.sub("", chosen["t"]) if lang == "zh" else chosen["t"]
         if lang == "en":
             text = repair_segments(text, r and r["t"], z and z["t"])
+        if links and lang != "ko":  # 링크 글자는 한국어 엔진이 읽은 것으로
+            mine = BRACKET.findall(body_of(text))
+            if len(mine) == len(links):
+                for a_, b_ in zip(mine, links):
+                    text = text.replace(a_, b_, 1)
+            elif lang == "en":  # 영어 엔진이 링크를 빠뜨렸으면(LFM [ … ] → LFM) 한국어 엔진 줄째로(라틴도 읽는다)
+                text = k["t"]
         row = {"y": chosen["y"], "x": min(l["x"] for l in row), "text": text, "lang": lang, "feat": feat,
                "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
         if not parse_header(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
