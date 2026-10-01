@@ -1,4 +1,5 @@
 """오래된 릴리스의 첨부 파일 지우기 — 최근 KEEP 개만 파일을 둔다(태그 · 변경 내용은 남긴다).
+지우기 전에 내려받기 수를 docs/downloads.csv 에 적는다(파일을 지우면 GitHub 의 수도 사라진다).
 
 업데이트는 최신 릴리스만 쓴다(바뀐 파일 받기 · 0.1.2 의 옛 업데이트 모두). 하나 앞 것은 되돌리기용.
 python tools/prune_releases.py [--keep 2] [--dry-run]   (gh CLI 로그인 필요)
@@ -9,6 +10,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+from pathlib import Path
 
 REPO = "ryusnews/watt"
 
@@ -37,9 +40,15 @@ def main() -> int:
     rels = [r for r in rels if not r.get("draft") and not r.get("prerelease")]
     rels.sort(key=lambda r: tuple(int(x) for x in re.findall(r"\d+", r["tag_name"])[:3]), reverse=True)
     freed = 0
+    log = Path(__file__).resolve().parent.parent / "docs" / "downloads.csv"  # 지우면 GitHub 의 내려받기 수도 사라진다 — 먼저 적어 둔다
+    if not log.exists():
+        log.write_text("release,asset,downloads,recorded\n", encoding="utf-8")
     for r in rels[a.keep:]:
         for asset in r.get("assets", []):
             freed += asset["size"]
+            if not a.dry_run:
+                with log.open("a", encoding="utf-8") as f:
+                    f.write(f"{r['tag_name']},{asset['name']},{asset['download_count']},{time.strftime('%Y-%m-%d')}\n")
             print(("would delete " if a.dry_run else "delete ") + f"{r['tag_name']} {asset['name']}")
             if not a.dry_run:
                 subprocess.run([g, "api", "-X", "DELETE", f"repos/{REPO}/releases/assets/{asset['id']}"], check=True,

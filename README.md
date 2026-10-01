@@ -66,6 +66,9 @@ AI 실행기(Ollama), 번역 모델, 글자 인식 언어 팩은 앱의 **환경
 | Ollama · 모델 · OCR 언어 팩 | 없을 때만 설치하고 기록 | 기록한 것만 지움 |
 | 설정 · 기록 · 창 캐시 | WATT 데이터 폴더 | 물어보고 지움(포터블은 폴더와 함께) |
 
+## 로드맵
+다음 단계(0.2.0 인식 안정판 · 0.3.0 함께 고치기 · 1.0.0 정식판)와 버전 규칙: [docs/ROADMAP.md](docs/ROADMAP.md)
+
 ## 개발
 ```
 pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging ^

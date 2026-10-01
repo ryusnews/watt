@@ -22,7 +22,8 @@ python tools/prune_releases.py      # 릴리스 뒤: 최근 2개만 파일을 �
   0.1.3–0.1.7 포터블의 옛 방식(`--role apply-update`)은 옮겨 가기용으로 남아 있다.
 
 - 버전은 `watt/__init__.py` 의 `VERSION` 하나만 바꾼다(exe 버전 정보·설치 프로그램 이름이 따라간다).
-- 버전 규칙 `0.1.N`: 안건(추가·수정·변경·삭제) 하나 = GitHub 이슈 하나 = N+1 = 릴리스 하나.
+- 버전 규칙(자세히는 [ROADMAP.md](ROADMAP.md)): 안건(추가·수정·변경·삭제) 하나 = GitHub 이슈 하나 = 수(패치) +1 = 릴리스 하나.
+  마일스톤(0.2.0 · 0.3.0 · 1.0.0)의 통과 기준을 넘으면 부(마이너)를 올리고 수는 0 부터.
   이슈 열기 → 고치기 → 커밋 메시지에 `Closes #번호` → VERSION·CHANGELOG → `python tools/build.py --installer`
   → 릴리스 `v0.1.N` 에 포터블 zip · 설치 파일 → `python tools/prune_releases.py`.
 - 필요한 것: Python 3.12 + `pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Globalization winrt-Windows.Storage.Streams winrt-Windows.Foundation winrt-Windows.Foundation.Collections`, Inno Setup 6(내 계정 설치: `%LOCALAPPDATA%\Programs\Inno Setup 6`).
