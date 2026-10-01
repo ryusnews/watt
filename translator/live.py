@@ -312,9 +312,9 @@ def best_name(row: dict, current: str) -> str:
 def read_variant(eng, img: np.ndarray, k: float, line_h: int) -> list[dict]:
     """조각 하나를 k 배로 읽어 메시지로(좌표는 조각 기준 원래 크기)."""
     from watt import screen
-    res = eng.recognize(screen.upscale2(img) if k == 2 else screen.upscale(img, k))
-    lines = {lg: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in eng.lines_of(v, k)]
-             for lg, v in res.items()}
+    big = screen.upscale2(img) if k == 2 else screen.upscale(img, k)
+    lines = {lg: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in v]
+             for lg, v in eng.read_lines(big, k).items()}
     rows = pick_lines(lines, line_h)
     return build_messages(rows, line_pitch(rows, line_h))
 
@@ -717,6 +717,19 @@ class Live:
         else:
             self.refind()
 
+    def apply_ai(self, cfg: dict) -> None:
+        """AI 글자 인식 언어가 바뀌면 뒤에서 모델을 띄운다(1–2초) — 그동안은 Windows OCR 만."""
+        want = (tuple(cfg.get("ai_langs") or []), bool(cfg.get("ai_gpu", True)))
+        if want == getattr(self, "ai_want", None):
+            return
+        self.ai_want = want
+
+        def load():
+            eng = self.ocr.ocr
+            eng.set_ai(list(want[0]), want[1])
+            self.trace.write("ai", langs=list(want[0]), gpu=bool(eng.ai and eng.ai.gpu), error=eng.ai_error or None)
+        threading.Thread(target=load, daemon=True).start()
+
     def watch_launcher(self):
         self.follow_game_window()
         def mtime(p):
@@ -732,6 +745,7 @@ class Live:
             self.trace.enabled = bool(cfg["keep_logs"])
             self.overlay.apply(cfg)
             incoming.MODEL = cfg["model"]
+            self.apply_ai(cfg)
         m = mtime(paths.REGION_GOOD)
         if m != self.seen_mtimes.get("region"):
             if self.seen_mtimes.get("region") is not None:
@@ -970,6 +984,8 @@ class Live:
                 paths.LIVE_STATUS.write_text(json.dumps({
                     "t": time.time(), "region": self.region, "frames": s["frames"], "changed": s["changed"],
                     "ocr_ms": s["ocr_ms"], "translated": s["translated"], "last_s": round(s["tr_s"], 2),
+                    "ai": sorted(self.ocr.ocr.ai.rec) if self.ocr.ocr.ai else [],
+                    "ai_gpu": bool(self.ocr.ocr.ai and self.ocr.ocr.ai.gpu), "ai_error": self.ocr.ocr.ai_error or None,
                     "backlog": self.jobs.qsize(), "model": incoming.MODEL}, ensure_ascii=False), encoding="utf-8")
             except OSError:
                 pass

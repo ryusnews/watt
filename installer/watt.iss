@@ -68,11 +68,13 @@ korean.AskModels=WATT 로 받은 AI 번역 모델도 지울까요?%n(수 GB · O
 korean.AskAddons=게임 폴더의 글꼴 애드온(ChatFontCJK)도 지울까요?
 korean.AskOcr=WATT 가 설치한 글자 인식 언어 팩도 지울까요?%n(원래 있던 언어 팩은 그대로 · Windows 권한 확인 창이 뜹니다)
 korean.AskOllama=WATT 가 설치한 Ollama(AI 실행기)도 제거할까요?%n(Ollama 제거 프로그램이 열립니다)
+korean.AskAi=WATT 로 받은 AI 글자 인식 파일(모델 · 실행 엔진)도 지울까요?
 korean.AskData=WATT 설정과 기록(채팅 기록 포함)도 지울까요?
 english.AskModels=Also remove the AI translation models WATT downloaded?%n(several GB; Ollama itself stays)
 english.AskAddons=Also remove the ChatFontCJK font addon from your game folder?
 english.AskOcr=Also remove the text recognition language packs WATT installed?%n(packs you had before stay; Windows will ask for permission)
 english.AskOllama=Also uninstall Ollama, which WATT installed?%n(the Ollama uninstaller will open)
+english.AskAi=Also remove the AI text recognition files WATT downloaded (models and runtime)?
 english.AskData=Also remove WATT settings and logs (including chat logs)?
 
 [Code]
@@ -175,6 +177,9 @@ begin
   if ReadList('installed_addons.txt', Lines) then
     if SuppressibleMsgBox(CustomMessage('AskAddons'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       RemoveAddons(Lines);
+  if DirExists(DataDir + 'i') then
+    if SuppressibleMsgBox(CustomMessage('AskAi'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      DelTree(DataDir + 'i', True, True, True);
   if DirExists(DataDir) then
     if SuppressibleMsgBox(CustomMessage('AskData'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       DelTree(DataDir, True, True, True);

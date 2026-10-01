@@ -203,6 +203,17 @@
         <div class="field"><span>위치</span><button class="icon-btn sq" id="set-resetpos" aria-label="처음 위치로" data-tip="채팅창 바로 위로 되돌리기"><svg class="ic sm"><use href="#i-reset"/></svg></button></div>
       </section>
       <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-ocr"/></svg>AI 글자 인식</h2>
+        <div class="field" data-tip="Windows OCR 이 약한 글자를 AI 모델로 다시 읽습니다. 켠 언어의 모델만 받습니다"><span>언어</span>
+          <div class="seg" id="set-ai" role="group" aria-label="AI 글자 인식 언어">
+            <button data-v="ko">한국어</button><button data-v="zh">중국어</button><button data-v="ru">러시아어</button></div></div>
+        <div id="ai-prog"></div>
+        <div class="field"><span>GPU</span><span class="inline"><span class="chip mono" id="ai-state" hidden></span>
+          <button class="switch" id="set-aigpu" role="switch" aria-label="AI 글자 인식 GPU"></button></span></div>
+        <div class="field"><span>받은 파일</span><span class="inline"><output class="mono" id="ai-size"></output>
+          <button class="icon-btn sq" id="set-airemove" aria-label="AI 글자 인식 파일 지우기" data-tip="받은 AI 모델 · 실행 엔진 지우기"><svg class="ic sm"><use href="#i-trash"/></svg></button></span></div>
+      </section>
+      <section class="panel card">
         <h2><svg class="ic bronze"><use href="#i-download"/></svg>업데이트</h2>
         <div class="field" data-tip="켤 때 GitHub 에서 새 버전을 확인합니다"><span>자동 확인</span><button class="switch" id="set-update" role="switch" aria-label="업데이트 자동 확인"></button></div>
       </section>

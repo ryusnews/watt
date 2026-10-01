@@ -61,6 +61,20 @@ def selftest() -> int:
         root.destroy()
         return {"sans": tkstyle.SANS, "mono": tkstyle.MONO}
 
+    def ai():  # 받아 둔 AI 글자 인식 팩이 있으면 exe 에서 불러지는지(DLL 충돌 · 빠진 표준 모듈)
+        import numpy as np
+        from watt import aipack, ocr as o
+        st = aipack.status()
+        langs = [lg for lg in ("ko", "zh", "ru") if st["models"][lg]]
+        if not (st["runtime"] and st["models"]["det"] and langs):
+            return "없음"
+        eng = o.Ocr()
+        eng.set_ai(langs)
+        if not eng.ai:
+            raise RuntimeError(eng.ai_error)
+        eng.ai.lines(np.zeros((64, 256, 4), np.uint8), 2)
+        return {"langs": langs, "gpu": eng.ai.gpu}
+
     def webview2():
         import winreg
         key = r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -75,7 +89,7 @@ def selftest() -> int:
             out[name] = f"{(time.perf_counter() - t0) * 1000:.0f}ms {type(r).__name__}"
         return out
 
-    for name, fn in (("modules", modules), ("data", data_files), ("ocr", ocr), ("fonts", fonts), ("webview2", webview2),
+    for name, fn in (("modules", modules), ("data", data_files), ("ocr", ocr), ("ai", ai), ("fonts", fonts), ("webview2", webview2),
                      ("api", api)):
         check(name, fn)
     report["ok"] = ok

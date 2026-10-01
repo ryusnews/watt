@@ -72,10 +72,9 @@ def sim(a: str, b: str) -> float:
 
 def read_frame(eng: ocr.Ocr, img: np.ndarray) -> tuple[list[dict], float]:
     t0 = time.perf_counter()
-    r = eng.recognize(screen.upscale2(img))
+    r = eng.read_lines(screen.upscale2(img), 2)
     ms = (time.perf_counter() - t0) * 1000
-    lines = {k: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in ocr.Ocr.lines_of(v, 2)]
-             for k, v in r.items()}
+    lines = {k: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in v] for k, v in r.items()}
     hs = [l["h"] for ls in lines.values() for l in ls]
     lh = int(np.median(hs) * 1.25) if hs else 15
     rows = live.pick_lines(lines, lh)
@@ -101,14 +100,27 @@ def main() -> int:
     ap.add_argument("--gt", default=str(ROOT / "eval" / "private" / "gt.json"))
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--refine", action="store_true", help="메시지마다 배율 · 위치를 바꿔 다시 읽고 투표(live.refine)")
+    ap.add_argument("--ai", default="", help="AI 글자 인식으로 보강할 언어(ko,zh,ru) — 모델은 aiocr.MODEL_DIR 또는 --models")
+    ap.add_argument("--models", default="", help="모델 폴더(개발용)")
+    ap.add_argument("--cpu", action="store_true", help="AI 를 GPU 없이")
     a = ap.parse_args()
     gt_path = Path(a.gt)
     frames = json.loads(gt_path.read_text(encoding="utf-8"))["frames"]
     eng = ocr.Ocr()
+    if a.ai:
+        from watt import aiocr
+        if a.models:
+            aiocr.MODEL_DIR = Path(a.models)
+        eng.set_ai(a.ai.split(","), gpu=not a.cpu)
+        if not eng.ai:
+            raise SystemExit("AI 를 못 띄움: " + eng.ai_error)
+        print(f"AI 보강: {','.join(eng.ai.rec)} ({'GPU' if eng.ai.gpu else 'CPU'})")
     n = found = lang_ok = name_ok = 0
     body_f, body_all, ms_all, misses = [], [], [], []
     for rel, gt in frames.items():
         img = load_png(gt_path.parent / rel)
+        if not ms_all:
+            read_frame(eng, img)  # 데우기(GPU 첫 실행)
         msgs, ms = read_frame(eng, img)
         if a.refine:
             t0 = time.perf_counter()

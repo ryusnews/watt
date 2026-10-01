@@ -253,6 +253,47 @@ class Api:
     def save_settings(self, changes: dict) -> dict:
         return settings.save(changes)
 
+    # ---- AI 글자 인식(언어별로 켜고, 켤 때 그 모델만 받는다)
+    def get_ai(self) -> dict:
+        from . import aipack
+        cfg = settings.load()
+        try:
+            live = json.loads(paths.LIVE_STATUS.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            live = {}
+        return {"langs": cfg["ai_langs"], "gpu": cfg["ai_gpu"], **aipack.status(),
+                "active": live.get("ai") if time.time() - live.get("t", 0) < 10 else None, "active_gpu": live.get("ai_gpu"),
+                "error": live.get("ai_error")}
+
+    @_logged
+    def set_ai_lang(self, lang: str, on: bool) -> dict:
+        from . import aiocr, aipack
+        if lang not in aiocr.LANGS:
+            return {"error": "모르는 언어"}
+        langs = [lg for lg in settings.load()["ai_langs"] if lg != lang] + ([lang] if on else [])
+        langs = [lg for lg in aiocr.LANGS if lg in langs]
+        if on and aipack.need(langs):
+            def work(cancel):
+                aipack.ensure(langs, lambda d, t: self._emit(type="progress", task="ai", done=d, total=t), cancel)
+                settings.save({"ai_langs": langs})
+                return {"langs": langs}
+            return {**self._task("ai", work), "bytes": sum(s for _, s in aipack.need(langs))}
+        settings.save({"ai_langs": langs})
+        return {"langs": langs}
+
+    @_logged
+    def remove_ai(self) -> dict:
+        from . import aipack
+        settings.save({"ai_langs": []})
+        try:
+            live = json.loads(paths.LIVE_STATUS.read_text(encoding="utf-8"))
+            if time.time() - live.get("t", 0) < 10 and live.get("ai") is not None:
+                return {"error": "통역 창을 끈 뒤 지워 주세요"}
+        except (OSError, ValueError):
+            pass
+        aipack.remove()
+        return aipack.status()
+
     # ---- 환경 설정 단계
     @_logged
     def install_ocr(self, codes: list[str] | None = None) -> dict:
@@ -387,6 +428,11 @@ class Api:
             if mine["ollama"]:
                 system.ollama_uninstall()
                 done.append("ollama")
+            from . import aiocr, aipack
+            if aiocr.AI_DIR.exists():  # AI 글자 인식 파일(통역 창을 껐으니 지울 수 있다)
+                aipack.remove()
+                settings.save({"ai_langs": []})
+                done.append("ai")
             self._game_list(force=True)
             return {"done": done, "left": system.installed_by_watt()}
         return self._task("cleanup", work)

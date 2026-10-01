@@ -12,6 +12,8 @@ DEFAULTS = {
     "overlay_alpha": 0.88,
     "overlay_lines": 10,
     "show_original": False,      # 통역 창에 원문도 보이기
+    "ai_langs": [],              # AI 글자 인식으로 보강할 언어(ko · zh · ru) — 켤 때 그 모델만 받는다
+    "ai_gpu": True,              # AI 글자 인식을 GPU(DirectML)로 — 안 되면 CPU
     "show_korean": True,         # 한국어 메시지도 번역 없이 그대로 보이기(채팅창과 순서 맞춰 보기)
     "ad_filter": "fold",         # 광고: show 보이기 | fold 접기(번역 안 함) | hide 숨기기
     "chat_newest": "bottom",     # 채팅창에서 새 메시지가 나타나는 쪽: bottom(기본) | top(역순 정렬 애드온)

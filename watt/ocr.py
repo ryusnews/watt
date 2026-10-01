@@ -9,12 +9,47 @@ import time
 from pathlib import Path
 
 import numpy as np
-from winrt.windows.globalization import Language
-from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
-from winrt.windows.media.ocr import OcrEngine
-from winrt.windows.storage.streams import Buffer
 
-from . import screen
+
+def _prefer_system_msvcp() -> None:
+    """winrt 꾸러미에 딸린 msvcp140.dll(14.29)이 먼저 올라가면 AI 실행 엔진(onnxruntime)이 'DLL 초기화 실패'로 안 뜬다.
+    Windows 에 더 새 것(Visual C++ 재배포)이 있으면 그것을 먼저 올린다 — 같은 이름 DLL 은 먼저 올라간 것을 같이 쓴다."""
+    import ctypes
+    import os
+    from ctypes import wintypes
+
+    def version(path: str) -> tuple:
+        ver = ctypes.windll.version
+        n = ver.GetFileVersionInfoSizeW(path, None)
+        if not n:
+            return ()
+        buf = ctypes.create_string_buffer(n)
+        if not ver.GetFileVersionInfoW(path, 0, n, buf):
+            return ()
+        p, ln = ctypes.c_void_p(), wintypes.UINT()
+        if not ver.VerQueryValueW(buf, "\\", ctypes.byref(p), ctypes.byref(ln)):
+            return ()
+        ms, ls = ctypes.cast(p, ctypes.POINTER(wintypes.DWORD * 4)).contents[2:4]
+        return ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("winrt")
+        dirs = list(spec.submodule_search_locations or []) if spec else []  # winrt 는 이름 공간 꾸러미(origin 없음)
+        mine = next((os.path.join(d, "msvcp140.dll") for d in dirs if os.path.exists(os.path.join(d, "msvcp140.dll"))), "")
+        system = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "msvcp140.dll")
+        if os.path.exists(mine) and os.path.exists(system) and version(system) > version(mine):
+            ctypes.WinDLL(system)
+    except Exception:
+        pass
+
+
+_prefer_system_msvcp()
+from winrt.windows.globalization import Language  # noqa: E402
+from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap  # noqa: E402
+from winrt.windows.media.ocr import OcrEngine  # noqa: E402
+from winrt.windows.storage.streams import Buffer  # noqa: E402
+
+from . import screen  # noqa: E402
 
 # 채팅에 나오는 언어 → Windows OCR 언어 팩. uk(우크라이나어)는 Windows OCR 에 없어 러시아어 엔진으로 읽는다
 ENGINES = ["en-US", "ko", "zh-Hans-CN", "ru-RU"]
@@ -55,6 +90,32 @@ class Ocr:
             if e:
                 self.engines[lg] = e
         self.loop = asyncio.new_event_loop()
+        self.ai = None  # AI 글자 인식(aiocr.AiOcr) — 켠 언어만 Windows 엔진 자리를 바꿔 낀다
+        self.ai_error = ""
+
+    def set_ai(self, langs: list[str], gpu: bool = True) -> None:
+        """AI 보강 언어를 바꾼다. 실행 엔진 · 모델이 없거나 못 띄우면 Windows OCR 만(이유는 ai_error)."""
+        langs = [lg for lg in langs if lg]
+        if self.ai and sorted(self.ai.rec) == sorted(langs):
+            return
+        self.ai, self.ai_error = None, ""
+        if not langs:
+            return
+        try:
+            from .aiocr import AiOcr
+            self.ai = AiOcr(langs, gpu)
+        except Exception as e:  # 없는 모델 · 실행 엔진 · GPU 문제
+            self.ai_error = f"{type(e).__name__}: {e}"
+
+    def read_lines(self, big: np.ndarray, scale: float) -> dict[str, list[dict]]:
+        """확대한 화면 → 엔진 자리별 줄(원래 좌표). AI 를 켠 언어는 그 모델이 읽은 줄로."""
+        lines = {k: self.lines_of(r, scale) for k, r in self.recognize(big).items()}
+        if self.ai:
+            try:
+                lines.update(self.ai.lines(big, scale))
+            except Exception as e:  # AI 가 실패해도 Windows OCR 결과로
+                self.ai_error = f"{type(e).__name__}: {e}"
+        return lines
 
     async def _all(self, sb):
         keys = list(self.engines)
@@ -175,9 +236,8 @@ class Reader:
 
     def _read(self, img, top: int) -> dict:
         big = screen.upscale2(img) if self.scale == 2 else img
-        res = self.ocr.recognize(big)
-        return {k: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top}
-                    for l in Ocr.lines_of(r, self.scale)] for k, r in res.items()}
+        return {k: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top} for l in ls]
+                for k, ls in self.ocr.read_lines(big, self.scale).items()}
 
     def save_last(self, path: Path) -> bool:
         if self.last_img is None:

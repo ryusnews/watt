@@ -29,6 +29,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .claude/
+/ai/
 
 # 예전 PowerShell 실험 도구(지금은 watt/ocr.py · watt/chat_region.py 가 대신한다)
 tools/ocr_server.ps1

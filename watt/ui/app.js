@@ -28,7 +28,7 @@ async function call(name, ...args) {
 /* 파이썬 → 화면 */
 window.WATT = {
   onEvent(ev) {
-    if (ev.type === 'progress') { S.progress[ev.task] = ev; renderSetup(); renderEngine(); renderUpdate(); return; }
+    if (ev.type === 'progress') { S.progress[ev.task] = ev; renderSetup(); renderEngine(); renderUpdate(); if (ev.task === 'ai') renderAi(); return; }
     if (ev.type === 'done') {
       delete S.progress[ev.task];
       if (!ev.ok) { toast(ev.error || '실패했습니다', 'err'); S.results[ev.task] = { error: ev.error }; }
@@ -39,9 +39,11 @@ window.WATT = {
         if (ev.task === 'ocr') toast('글자 인식 언어 팩을 확인했습니다', 'ok');
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
         if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
+        if (ev.task === 'ai') toast('AI 글자 인식 모델을 받았습니다', 'ok');
         if (ev.task === 'update' && ev.result && ev.result.opened) toast('릴리스 페이지를 열었습니다');
         if (ev.task === 'update' && ev.result && ev.result.ready) { if (S.update) S.update.ready = ev.result.ready; askRestart(ev.result.ready); }
       }
+      if (ev.task === 'ai') renderAi();
       refresh(true);
     }
   },
@@ -347,6 +349,31 @@ function renderSettings() {
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
   $('#set-alpha').value = Math.round(c.overlay_alpha * 100); $('#out-alpha').textContent = Math.round(c.overlay_alpha * 100) + '%';
   $('#set-lines').value = c.overlay_lines; $('#out-lines').textContent = c.overlay_lines;
+  renderAi();
+}
+
+/* AI 글자 인식 — 언어마다 켜기(켤 때 그 모델만 받기) */
+const AI_NAME = { ko: '한국어 이름 · 글', zh: '중국어', ru: '러시아어 · 우크라이나어' };
+async function renderAi() {
+  const a = S.ai = await call('get_ai');
+  const p = S.progress.ai, run = p || (S.state && S.state.busy.includes('ai'));
+  const mbOf = (k) => (a.sizes[k] / 1048576).toFixed(0);
+  $$('#set-ai button').forEach((b) => {
+    const v = b.dataset.v, have = a.models[v];
+    b.classList.toggle('on', a.langs.includes(v));
+    b.disabled = !!run;
+    b.dataset.tip = AI_NAME[v] + (have ? '' : ` — 처음 켤 때 ${mbOf(v)}MB${a.models.det ? '' : ` + 공통 ${mbOf('det')}MB`}${a.runtime ? '' : ` + 실행 엔진 ${mbOf('runtime')}MB`} 받기`);
+  });
+  setHTML($('#ai-prog'), run ? (p && p.total ? `<div class="progress"><i style="width:${pct(p)}%"></i></div>` : '<div class="progress indet"><i></i></div>') : '');
+  setSwitch('#set-aigpu', a.gpu);
+  const st = $('#ai-state');
+  st.hidden = !(a.active && a.active.length) && !a.error;
+  st.textContent = a.error ? '오류' : (a.active_gpu ? 'GPU' : 'CPU');
+  st.className = 'chip mono ' + (a.error ? 'bad' : 'ok');
+  st.dataset.tip = a.error || `통역 창이 지금 쓰는 장치 · ${(a.active || []).map((l) => l.toUpperCase()).join(' · ')}`;
+  const got = a.disk;
+  $('#ai-size').textContent = got ? mb(got) : '-';
+  $('#set-airemove').disabled = !got || !!run;
 }
 let saveTimer = null;
 function save(changes, quiet = false) {
@@ -584,6 +611,18 @@ function bind() {
   $('#set-model').onchange = (e) => save({ model: e.target.value });
   $('#set-preload').onclick = () => { save({ preload: !S.state.settings.preload }); renderSettings(); };
   $('#set-orig').onclick = () => { save({ show_original: !S.state.settings.show_original }); renderSettings(); };
+  $('#set-ai').onclick = async (e) => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    const r = await call('set_ai_lang', b.dataset.v, !b.classList.contains('on'));
+    if (r.error) toast(r.error, 'err');
+    if (r.started) S.progress.ai = { done: 0, total: r.bytes };
+    renderAi();
+  };
+  $('#set-aigpu').onclick = async () => { await call('save_settings', { ai_gpu: !S.ai.gpu }); renderAi(); };
+  $('#set-airemove').onclick = async () => {
+    if (!await confirmBox('받은 AI 글자 인식 파일을 지울까요?')) return;
+    const r = await call('remove_ai'); if (r.error) toast(r.error, 'err'); renderAi();
+  };
   $('#set-korean').onclick = () => { save({ show_korean: S.state.settings.show_korean === false }); renderSettings(); };
   $('#set-logs').onclick = () => { save({ keep_logs: !S.state.settings.keep_logs }); renderSettings(); };
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };
@@ -698,6 +737,11 @@ function mockApi() {
     get_shot: () => ok({ img: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#2b3240"/><rect x="10" y="560" width="520" height="260" fill="#000" opacity=".6"/></svg>'), w: 1600, h: 900, found: { x: 10, y: 560, w: 520, h: 260 }, report: { can: true, wait_h: 0 } }),
     set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
+    get_ai: () => ok({ langs: settings.ai_langs || [], gpu: settings.ai_gpu !== false, runtime: (settings.ai_langs || []).length > 0,
+      models: { det: true, ko: false, zh: (settings.ai_langs || []).includes('zh'), ru: false }, active: settings.ai_langs || [], active_gpu: true, error: null, disk: (settings.ai_langs || []).length ? 96e6 : 0,
+      sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092 } }),
+    set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
+    remove_ai: () => ok({}),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
