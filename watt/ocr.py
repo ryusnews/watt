@@ -186,7 +186,7 @@ def shift_of(old: np.ndarray, new: np.ndarray, min_iou: float = 0.5) -> int | No
         return np.logical_and(x, y).sum() / u if u else 0.0
     base = iou(0)
     if base >= 0.98:
-        return None  # 밀리지 않음(제자리에서 조금 바뀜)
+        return 0  # 밀리지 않음(제자리에서 조금 바뀜 — 옛 줄이 흐려짐 등)
     rows_a, rows_b = a.sum(1), b.sum(1)  # 줄 윤곽으로 후보를 먼저 좁힌다
     cands = sorted(range(1, h // 2), key=lambda dy: np.abs(rows_a[dy:] - rows_b[:h - dy]).mean())[:6]
     best, dy = max((iou(d), d) for d in cands)
@@ -213,6 +213,7 @@ class Reader:
         self.last_sig = None
         self.last_img = None
         self.last_lines = None
+        self.still = 0
         self.ready = {"ready": True, "engines": list(self.ocr.engines)}
 
     def read(self, region: dict, force: bool = False) -> dict:
@@ -226,6 +227,12 @@ class Reader:
         prev_img, prev_lines = self.last_img, self.last_lines
         self.last_sig, self.last_img = sig, img
         dy = shift_of(prev_img, img) if prev_img is not None and prev_lines and not force else None
+        if dy == 0 and self.still < 20:
+            # 밀리지 않고 제자리에서 조금 바뀜 — 새 글은 늘 채팅을 밀므로 다시 읽지 않는다. 전체 다시 읽기(AI 글자 인식이면
+            # 게임 중 1.5–2.6초)가 화면의 1/3 이었다(2026-10-01). 그래도 20번 이어지면 한 번은 읽는다
+            self.still += 1
+            return {"same": True, "still": True}
+        self.still = 0
         line_h = int(region.get("line_h") or 14)
         band = gap_above(img, img.shape[0] - dy - int(line_h * 1.5), line_h) if dy else -1
         if dy and band > line_h * 2:

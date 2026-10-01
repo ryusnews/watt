@@ -6,9 +6,11 @@ Windows OCR 은 OS 에 깔린 엔진을 부르므로 언어마다 켤 일이 없
 
 실행 엔진(onnxruntime)과 모델은 설치판에 넣지 않고, 사용자가 켤 때 받는다(aipack).
 """
+import hashlib
 import math
 import re
 import sys
+from collections import OrderedDict
 
 import numpy as np
 
@@ -112,6 +114,7 @@ class AiOcr:
             self.rec[lg] = s
             chars = s.get_modelmeta().custom_metadata_map["character"].splitlines()
             self.chars[lg] = ["\0"] + chars + [" "]  # 0 = 빈칸(CTC), 끝 = 띄어쓰기
+        self.cache: OrderedDict = OrderedDict()  # (언어, 글자 모양) → 읽은 결과 — 채팅이 밀려 다시 읽어도 같은 줄은 다시 돌리지 않는다
         self.gpu = prov[0] == "DmlExecutionProvider"
         self.want_gpu = gpu
 
@@ -190,7 +193,36 @@ class AiOcr:
                 out.append((W, idx, batch, rw))
         return out
 
+    @staticmethod
+    def _key(crop: np.ndarray) -> bytes:
+        """글자 픽셀(밝은 점)만 잘라 낸 모양 — 상자 여백이 1px 달라도 같은 줄이면 같은 키."""
+        ink = crop[..., :3].max(2) > 110
+        ys, xs = np.nonzero(ink)
+        if not len(ys):
+            return b""
+        part = np.ascontiguousarray(crop[ys.min():ys.max() + 1, xs.min():xs.max() + 1, :3])
+        return hashlib.blake2b(part.tobytes(), digest_size=12).digest() + bytes(str(part.shape), "ascii")
+
     def recognize(self, lg: str, crops: list[np.ndarray], prepared: list | None = None) -> list[tuple[str, list]]:
+        if prepared is None and crops:
+            keys = [self._key(c) for c in crops]
+            todo = [i for i, k in enumerate(keys) if not k or (lg, k) not in self.cache]
+            got = dict(zip(todo, self._run(lg, [crops[i] for i in todo]))) if todo else {}
+            out = []
+            for i, k in enumerate(keys):
+                if i in got:
+                    if k:
+                        self.cache[(lg, k)] = got[i]
+                        if len(self.cache) > 3000:
+                            self.cache.popitem(last=False)
+                    out.append(got[i])
+                else:
+                    self.cache.move_to_end((lg, k))
+                    out.append(self.cache[(lg, k)])
+            return out
+        return self._run(lg, crops, prepared)
+
+    def _run(self, lg: str, crops: list[np.ndarray], prepared: list | None = None) -> list[tuple[str, list]]:
         sess, chars = self.rec[lg], self.chars[lg]
         res: list = [("", [])] * len(crops)
         for W, idx, batch, rw in prepared if prepared is not None else self.prepare(crops):
