@@ -422,7 +422,7 @@ class Api:
 
     @_logged
     def test_translate(self, ko_text: str = "") -> dict:
-        """번역 시험 — 지금 게임 채팅창에 보이는 외국어 최근 3줄 + 보낼 말(입력한 한국어, 없으면 예시)."""
+        """번역 시험 — 지금 게임 채팅창에 보이는 외국어 최근 3줄 + 보낼 말(입력한 한국어, 없으면 예시)을 모든 보내기 언어로."""
         def work(cancel):
             from translator import incoming, outgoing
             model = settings.load()["model"]
@@ -438,9 +438,12 @@ class Api:
                 ko, sec = incoming.translate(m["body"])
                 rows.append({"dir": "in", "lang": m["lang"], "who": m["name"], "src": m["body"], "dst": ko, "sec": round(sec, 1)})
             src = (ko_text or "").strip() or "성불 탱 구해요 귓 주세요"
-            lang = settings.load()["out_lang"]
-            out, sec = outgoing.translate(src, lang, model, log=False)
-            rows.append({"dir": "out", "lang": lang, "who": "", "src": src, "dst": out, "sec": round(sec, 1)})
+            first = settings.load()["out_lang"]
+            for lang in [first] + [c for c, _, _ in outgoing.LANGS if c != first]:  # 기본 보내기 언어부터
+                if cancel.is_set():
+                    break
+                out, sec = outgoing.translate(src, lang, model, log=False)
+                rows.append({"dir": "out", "lang": lang, "who": "", "src": src, "dst": out, "sec": round(sec, 1)})
             settings.save({"setup_done": True})
             return {"rows": rows, "note": note}
         return self._task("test", work)
@@ -448,6 +451,7 @@ class Api:
     def _chat_now(self, n: int = 3) -> list[dict] | None:
         """게임 채팅창에서 지금 보이는 외국어 메시지(아래쪽 = 최근) n개. 게임이 없으면 None."""
         from translator import live
+        from translator.adfilter import AdFilter
         if not screen.find_game_window():
             return None
         rect = chat_region.current()
@@ -455,8 +459,10 @@ class Api:
             return []
         r = ocr.Reader(2).read(rect, force=True)
         msgs = live.build_messages(live.pick_lines(r.get("lines", {}), rect["line_h"]), rect["line_h"])
-        foreign = [m for m in msgs if m["lang"] != "ko" and len(re.sub(r"\W", "", m["body"])) >= 2
+        foreign = [m for m in msgs if m["lang"] != "ko" and m["name"] and len(re.sub(r"\W", "", m["body"])) >= 2
                    and not live.is_junk(m["body"])]
+        ads = AdFilter()
+        foreign = [m for m in foreign if ads.check(m["name"], m["body"])["kind"] != "ad"]  # 광고는 시험에서 빼기
         return foreign[-n:]
 
     # ---- 통역 창 · 입력창(따로 뜨는 프로세스)
