@@ -358,24 +358,55 @@ function save(changes, quiet = false) {
 /* ---------- 용어 사전 ---------- */
 const CATS = [['all', '전체', () => true], ['dungeon', '던전', (t) => t.type === 'dungeon' || t.type === 'wing'], ['raid', '공격대', (t) => t.type === 'raid'],
   ['zone', '지역', (t) => t.type === 'zone'], ['city', '도시', (t) => t.type === 'city'], ['class', '직업·역할', (t) => ['class', 'spec', 'role'].includes(t.type)],
-  ['chat', '채팅 말', (t) => t.type === 'chat'], ['item', '아이템', (t) => t.type === 'item'], ['verify', '확인 필요', (t) => (t.verify || []).length > 0]];
+  ['chat', '채팅 말', (t) => t.type === 'chat'], ['item', '아이템', (t) => t.type === 'item'], ['verify', '확인 필요', (t) => (t.verify || []).length > 0],
+  ['mine', '고친 것', (t) => t.origin && t.origin !== 'base']];
+const MARK = { edited: '수정', added: '추가', hidden: '숨김' };
 async function loadTerms() { if (!S.terms) S.terms = await call('get_terms'); renderTerms(); }
 function renderTerms() {
   const terms = S.terms || [];
-  $('#cats').innerHTML = CATS.map(([k, l, f]) => `<button role="tab" data-cat="${k}" class="${k === S.termCat ? 'on' : ''}">${l}<span>${terms.filter(f).length}</span></button>`).join('');
+  const visible = (k) => (t) => k === 'mine' || t.origin !== 'hidden';  // 숨긴 것은 '고친 것'에서만
+  $('#cats').innerHTML = CATS.map(([k, l, f]) => `<button role="tab" data-cat="${k}" class="${k === S.termCat ? 'on' : ''}">${l}<span>${terms.filter(visible(k)).filter(f).length}</span></button>`).join('');
   const q = $('#term-q').value.trim().toLowerCase();
   const f = CATS.find((c) => c[0] === S.termCat)[2];
-  const rows = terms.filter(f).filter((t) => !q || JSON.stringify(t).toLowerCase().includes(q));
+  const rows = terms.filter(visible(S.termCat)).filter(f).filter((t) => !q || JSON.stringify(t).toLowerCase().includes(q));
   $('#term-rows').innerHTML = rows.map((t) => {
     const abbr = (t.en_abbr || [])[0] || '';
-    const en = t.en.replace(/\s*\(.*\)$/, '');
+    const en = (t.en || '').replace(/\s*\(.*\)$/, '');
     const verify = (t.verify || []).length ? ' <span class="badge warn">확인 필요</span>' : '';
-    return `<div class="tr"><span class="ko">${esc(t.ko)}</span><span><span class="alias">${esc((t.ko_alias || []).slice(0, 2).join(', '))}</span>${verify}</span>
+    const mark = MARK[t.origin] ? `<span class="mark ${t.origin}">${MARK[t.origin]}</span>` : '';
+    return `<div class="tr${t.origin === 'hidden' ? ' hidden-term' : ''}" data-id="${esc(t.id)}"><span class="ko">${esc(t.ko)}${mark}</span><span><span class="alias">${esc((t.ko_alias || []).slice(0, 2).join(', '))}</span>${verify}</span>
       <span><span class="abbr">${esc(abbr)}</span> <span class="dimtx">${abbr.toLowerCase() === en.toLowerCase() ? '' : esc(en)}</span></span>
       <span class="other">${esc([...(t.zh || []).slice(0, 2), ...(t.zh_only ? (t.en_abbr || []) : [])].join(' · '))}</span>
       <span class="other">${esc((t.ru || [])[0] || '')}</span></div>`;
   }).join('');
 }
+
+function editTerm(t) {
+  const isNew = !t, e = t || { type: 'chat', zh_only: false }, list = (v) => (v || []).join(', ');
+  $('#te-title').textContent = isNew ? '용어 추가' : e.ko;
+  $('#te-type').value = e.type || 'chat';
+  for (const k of ['ko', 'en']) $(`#te-${k}`).value = e[k] || '';
+  for (const k of ['ko_alias', 'en_abbr', 'zh', 'ru']) $(`#te-${k}`).value = list(e[k]);
+  setSwitch('#te-zh_only', e.zh_only);
+  $('#te-zh_only').onclick = () => setSwitch('#te-zh_only', $('#te-zh_only').getAttribute('aria-checked') !== 'true');
+  $('#te-err').textContent = '';
+  const del = $('#te-del'), reset = $('#te-reset');
+  del.hidden = isNew || e.origin === 'hidden';
+  del.textContent = e.origin === 'added' ? '지우기' : '숨기기';
+  del.dataset.tip = e.origin === 'added' ? '추가한 용어 지우기' : '번역에 쓰지 않기 · 고친 것에서 되살릴 수 있음';
+  reset.hidden = !['edited', 'hidden'].includes(e.origin);
+  $('#term-edit').hidden = false;
+  $('#te-ko').focus();
+  const done = async (fn, msg) => { const r = await fn(); if (r && r.error) { $('#te-err').textContent = r.error; return; }
+    $('#term-edit').hidden = true; S.terms = await call('get_terms'); renderTerms(); toast(msg, 'ok'); };
+  $('#te-no').onclick = () => { $('#term-edit').hidden = true; };
+  $('#te-yes').onclick = () => done(() => call('save_term', { id: isNew ? '' : e.id, type: $('#te-type').value,
+    ko: $('#te-ko').value, ko_alias: $('#te-ko_alias').value, en: $('#te-en').value, en_abbr: $('#te-en_abbr').value,
+    zh: $('#te-zh').value, ru: $('#te-ru').value, zh_only: $('#te-zh_only').getAttribute('aria-checked') === 'true' }), '저장했습니다 · 바로 번역에 씁니다');
+  del.onclick = async () => { if (await confirmBox(e.origin === 'added' ? '용어 지우기' : '용어 숨기기', e.ko)) done(() => call('delete_term', e.id), e.origin === 'added' ? '지웠습니다' : '숨겼습니다'); };
+  reset.onclick = () => done(() => call('reset_term', e.id), '원래대로 되돌렸습니다');
+}
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#term-edit').hidden) $('#te-no').click(); });
 
 /* ---------- 온보딩 ---------- */
 const COACH = [
@@ -579,6 +610,8 @@ function bind() {
   // 용어 사전
   $('#cats').onclick = (e) => { const b = e.target.closest('[data-cat]'); if (b) { S.termCat = b.dataset.cat; renderTerms(); } };
   $('#term-q').oninput = () => renderTerms();
+  $('#term-add').onclick = () => editTerm(null);
+  $('#term-rows').onclick = (ev) => { const r = ev.target.closest('.tr[data-id]'); if (r) editTerm((S.terms || []).find((t) => t.id === r.dataset.id)); };
   // 바깥 링크는 기본 브라우저로(정해 둔 주소만 — watt/app.py LINKS)
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-url]'); if (!a) return;
@@ -611,6 +644,7 @@ function bind() {
 })();
 
 /* ---------- 미리보기용 가짜 API (브라우저로 열었을 때) ---------- */
+let mockTerms = null;
 function mockApi() {
   const settings = { model: 'gemma4:12b', out_lang: 'en', out_mode: 'clipboard', overlay_font: 11, overlay_alpha: 0.88, overlay_lines: 10,
     show_original: false, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
@@ -644,7 +678,15 @@ function mockApi() {
     get_games: () => ok([{ dir: 'C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_', label: '클래식 베타', supported: true, running: true, addon: '0.2.0' },
       { dir: 'C:\\Program Files (x86)\\World of Warcraft\\_anniversary_', label: '기념 서버', supported: true, running: false, addon: null },
       { dir: 'C:\\Program Files (x86)\\World of Warcraft\\_retail_', label: '리테일', supported: false, running: false, addon: null }]),
-    get_terms: () => fetch('../../translator/wow_terms.json').then((r) => r.json()).then((d) => d.terms).catch(() => []),
+    get_terms: () => (mockTerms ? ok(mockTerms) : fetch('../../translator/wow_terms.json').then((r) => r.json())
+      .then((d) => (mockTerms = d.terms.map((x) => ({ ...x, origin: 'base' })))).catch(() => [])),
+    save_term: (e) => { const l = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!e.ko.trim()) return ok({ error: '한국 이름이 필요합니다' });
+      const n = { ...e, ko_alias: l(e.ko_alias), en_abbr: l(e.en_abbr), zh: l(e.zh), ru: l(e.ru) }; const i = mockTerms.findIndex((x) => x.id === e.id);
+      if (i >= 0) mockTerms[i] = { ...mockTerms[i], ...n, origin: mockTerms[i].origin === 'added' ? 'added' : 'edited' }; else mockTerms.push({ ...n, id: 'u-' + Date.now(), origin: 'added' });
+      return ok({ id: e.id }); },
+    delete_term: (id) => { const i = mockTerms.findIndex((x) => x.id === id); if (mockTerms[i].origin === 'added') mockTerms.splice(i, 1); else mockTerms[i].origin = 'hidden'; return ok({ ok: true }); },
+    reset_term: (id) => { const t = mockTerms.find((x) => x.id === id); t.origin = 'base'; return ok({ ok: true }); },
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
     refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),

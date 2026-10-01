@@ -31,6 +31,7 @@ UPDATE_STAGE = DATA / "update"  # 포터블 업데이트: 새 버전을 여기�
 UI = RES / "watt" / "ui"
 ADDON = RES / "addon" / "ChatFontCJK"
 TERMS = RES / "translator" / "wow_terms.json"
+USER_TERMS = DATA / "user_terms.json"  # 사용자가 고친 용어(수정 · 추가 · 숨김) — 기본 사전 위에 덧씌운다
 
 LOGS = DATA / "logs"
 SETTINGS = DATA / "settings.json"

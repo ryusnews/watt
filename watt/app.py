@@ -226,7 +226,27 @@ class Api:
 
     @_logged
     def get_terms(self) -> list[dict]:
-        return json.loads(paths.TERMS.read_text(encoding="utf-8"))["terms"]
+        """기본 사전 + 사용자가 고친 것(origin: base · edited · added · hidden)."""
+        from translator import terms
+        return terms.all_terms()
+
+    @_logged
+    def save_term(self, entry: dict) -> dict:
+        from translator import terms
+        try:
+            return terms.save_term(entry)
+        except ValueError as e:
+            return {"error": str(e)}
+
+    @_logged
+    def delete_term(self, tid: str) -> dict:
+        from translator import terms
+        return terms.delete_term(tid)
+
+    @_logged
+    def reset_term(self, tid: str) -> dict:
+        from translator import terms
+        return terms.reset_term(tid)
 
     # ---- 설정
     @_logged

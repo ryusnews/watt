@@ -39,6 +39,15 @@ def _lexicon() -> set[str]:
 
 
 LEX = _lexicon()
+_LEX_VER = terms.VERSION
+
+
+def _lex() -> set[str]:
+    """사용자가 사전을 고치면 다시 만든다."""
+    global LEX, _LEX_VER
+    if _LEX_VER != terms.VERSION:
+        LEX, _LEX_VER = _lexicon(), terms.VERSION
+    return LEX
 ALT = {"l": "lI1i", "I": "lI1i", "1": "1lI", "|": "lI1", "i": "il", "0": "0oO", "O": "Oo0", "o": "o0O"}
 NUM_UNIT = re.compile(r"^(?P<num>[0-9OoIl|]+)(?P<unit>k|kk|g|s|c|m|x|h|hr|hrs|min|mins|lr|lvl)?$", re.I)
 LV_NUM = re.compile(r"^(?P<lv>lvl?|lv)(?P<num>[0-9OoIl|]+)$", re.I)
@@ -59,6 +68,7 @@ def _cased(word: str, like: str) -> str:
 
 
 def fix_token(tok: str) -> str:
+    LEX = _lex()
     low = tok.lower()
     if low in LEX or len(tok) == 1:  # 한 글자(I · 1 · l)는 문맥 없이 못 가른다 — 홀로 선 l 은 fix() 가 I 로
         return tok

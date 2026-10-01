@@ -2,6 +2,7 @@
 /logs/
 eval/results/
 settings.json
+user_terms.json
 chat_region*.json
 live_ui.json
 live_status.json

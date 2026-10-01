@@ -18,6 +18,7 @@
   <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.5v3M14.5 2.5v3M9.5 18.5v3M14.5 18.5v3M2.5 9.5h3M2.5 14.5h3M18.5 9.5h3M18.5 14.5h3"/></symbol>
   <symbol id="i-ocr" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8 10h8M8 14h5"/></symbol>
   <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 0 10h-9a5 5 0 0 1 0-10z"/><path d="M8 10.5v3M6.5 12h3"/><path d="M15.5 11h.01M17.5 13h.01"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
   <symbol id="i-frame" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9.5h6M7 12.5h10M7 15.5h8"/></symbol>
@@ -221,7 +222,8 @@
   <div class="terms">
     <div class="terms-head">
       <div class="cat-tabs" id="cats" role="tablist" aria-label="분류"></div>
-      <label class="search"><svg class="ic sm"><use href="#i-search"/></svg><input id="term-q" placeholder="통곡, WC, 哀嚎" aria-label="용어 검색"></label>
+      <span class="inline"><label class="search"><svg class="ic sm"><use href="#i-search"/></svg><input id="term-q" placeholder="통곡, WC, 哀嚎" aria-label="용어 검색"></label>
+        <button class="btn sm" id="term-add" data-tip="용어 추가"><svg class="ic sm"><use href="#i-plus"/></svg>추가</button></span>
     </div>
     <div class="terms-table">
       <div class="tr th"><span>한국 이름</span><span>한국 줄임말</span><span>영어</span><span>중국어</span><span>러시아어</span></div>
@@ -263,6 +265,28 @@
     <p id="coach-text"></p>
     <div class="coach-foot"><span class="dots" id="coach-dots"></span>
       <span><button class="link" id="coach-skip">건너뛰기</button><button class="btn dark sm" id="coach-next">다음</button></span></div>
+  </div>
+</div>
+
+<div class="modal" id="term-edit" hidden>
+  <div class="modal-card term-card" role="dialog" aria-labelledby="te-title">
+    <b id="te-title"></b>
+    <div class="te-grid">
+      <label>분류<span class="select"><select id="te-type">
+        <option value="dungeon">던전</option><option value="wing">던전 구역</option><option value="raid">공격대</option><option value="zone">지역</option>
+        <option value="city">도시</option><option value="class">직업</option><option value="spec">특성</option><option value="role">역할</option>
+        <option value="chat">채팅 말</option><option value="item">아이템</option></select><svg class="ic sm"><use href="#i-chev"/></svg></span></label>
+      <label>한국 이름<input id="te-ko" maxlength="40"></label>
+      <label data-tip="쉼표로 여러 개">한국 줄임말<input id="te-ko_alias" placeholder="성불, 성난불길"></label>
+      <label>영어 이름<input id="te-en" maxlength="60"></label>
+      <label data-tip="쉼표로 여러 개 · 첫 번째를 보낼 때 씀">영어 약어<input id="te-en_abbr" placeholder="RFC, Ragefire"></label>
+      <label data-tip="쉼표로 여러 개 · 첫 번째를 보낼 때 씀">중국어<input id="te-zh" placeholder="怒焰裂谷, 怒焰"></label>
+      <label data-tip="쉼표로 여러 개">러시아어<input id="te-ru" placeholder="Огненная пропасть"></label>
+      <label class="te-switch" data-tip="영어 약어 칸이 중국어 병음 약자(NY · AH) — 중국어 글에서만 씀">병음 약자<button class="switch" id="te-zh_only" role="switch" aria-label="병음 약자"></button></label>
+    </div>
+    <div class="err-text" id="te-err"></div>
+    <div class="modal-foot"><button class="btn ghost-danger" id="te-del"></button><button class="btn" id="te-reset">원래대로</button>
+      <span class="grow"></span><button class="btn" id="te-no">취소</button><button class="btn primary" id="te-yes">저장</button></div>
   </div>
 </div>
 
