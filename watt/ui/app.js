@@ -395,7 +395,7 @@ function renderSettings() {
 }
 
 /* AI 글자 인식 — 언어마다 켜기(켤 때 그 모델만 받기) */
-const AI_NAME = { ko: '한국어 이름 · 글', zh: '중국어', ru: '러시아어 · 우크라이나어' };
+const AI_NAME = { ko: '한국어 이름 · 글', zh: '중국어 · 영어 본문(작은 글꼴에서 g·q 를 덜 헷갈림)', ru: '러시아어 · 우크라이나어' };
 async function renderAi() {
   const a = S.ai = await call('get_ai');
   const p = S.progress.ai, run = p || (S.state && S.state.busy.includes('ai'));

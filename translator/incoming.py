@@ -30,7 +30,13 @@ LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/r
                "(Tank lfg WC = 탱커가 통곡의 동굴 파티를 찾음); 'LF/LFM <role>' = recruiting that role. "
                "Map misspelled game names to the closest real one (STORWIND = 스톰윈드). "
                "OCR misreads g as a and l as I: Ifg/lfa = lfg, Ifm = lfm, roaue = rogue, aoina = going, IVI = lvl, If = lf. "
-               "'X would go hard' = X would be awesome.")
+               "'X would go hard' = X would be awesome. '/who 21' = the /who player search (21레벨 검색), not a channel. "
+               "summ/sum = a summoning service (소환 서비스), never a pet.")
+# 시간 뒤의 PST · EST 는 미국 시간대 — 사전의 'pst = 귓속말 주세요' 를 쓰면 '1 pm pst' 가 '오후 1시 귓속말 주세요'(2026-10-02)
+TIMEZONE = re.compile(r"(?i)(?:\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b(?:morning|noon|afternoon|evening|tonight|midnight))\s*"
+                      r"(?:pst|pdt|pt|est|edt|et|cst|cdt|mst|mdt|cet|cest|gmt|utc|bst)\b")
+TIME_RULES = ("Here PST/PDT/EST/CST/CET/GMT after a time are time zones (PST = 미국 태평양 시간, EST = 미국 동부 시간, "
+              "CET = 중앙유럽 시간), not 'please send tell'; am/pm are 오전/오후.")
 CHINESE_RULES = ("Chinese LFG ads shorten dungeons (怒焰 = 성난불길 협곡) and even to pinyin initials "
                  "(AH = 哀嚎 = 통곡의 동굴, never the auction house). 'N=M' counts players (哀嚎4=1 = 4명 있음 1명 더 구함; "
                  "'=3' = 3명 더 구함). 任意 = any class, 缺 = need, 来/组人 = recruiting, 求组 = wants to JOIN a group, "
@@ -57,6 +63,8 @@ def system_prompt(terms: dict, text: str = "", chinese: bool = False) -> str:
         parts.append(CYRILLIC_RULES)
     if "[" in text:
         parts.append(LINK_RULES)
+    if TIMEZONE.search(text):
+        parts.append(TIME_RULES)
     s = " ".join(parts)
     if terms:
         s += " Game terms in this message (original = Korean meaning): " + "; ".join(f"{k} = {v}" for k, v in terms.items()) + "."
@@ -114,6 +122,8 @@ def translate(text: str, model: str | None = None, chinese: bool = False) -> tup
     한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
     text = normalize_ocr(text)
     terms = matched_terms(text, chinese)
+    if TIMEZONE.search(text):  # 시간대로 쓴 pst · pm 은 '귓속말 주세요' 가 아니다
+        terms = {k: v for k, v in terms.items() if k.lower() not in ("pst", "pm")}
     out, secs = chat_json(model or MODEL, system_prompt(terms, text, chinese), text, SCHEMA)
     return fix_terms(out.get("ko", "").strip(), terms), secs
 
