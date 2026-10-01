@@ -913,6 +913,15 @@ class Live:
                         decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             if decision == "pass_ko":  # 한국어 — 번역 없이 그대로, 순서는 번역할 글과 같은 줄로
                 decision, m["pass"] = "queued", True
+            if decision == "queued":
+                # 방금(12초 안) 올린 글과 거의 같으면 한 번만 — OCR 이 같은 메시지를 3줄 · 4줄(깨진 꼬리)로 번갈아 읽어
+                # 몇 초 사이 두 번 번역하고 '다시 올린 글'로도 셌다(组队交流 광고, 2026-10-01). 진짜로 다시 올린 글은 12초 뒤
+                now, bk = time.monotonic(), dkey(f"{m['name']}|{m['body']}")  # 이름까지 — 다른 사람의 같은 대답(네)은 따로
+                self.recent = [(t_, k_) for t_, k_ in getattr(self, "recent", []) if now - t_ < 12]
+                if any(difflib.SequenceMatcher(None, bk, k_).ratio() >= 0.8 for _, k_ in self.recent):
+                    decision = "dup_recent"
+                else:
+                    self.recent.append((now, bk))
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
                 ad = self.ads.check(m["name"], m["body"])
                 m["kind"], m["ad"] = ad["kind"], ad
