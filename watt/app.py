@@ -283,7 +283,18 @@ class Api:
             log.info("model switch %s -> %s (unloaded=%s)", old, new, gone)
             if settings.load()["preload"]:
                 llm.preload(new)
-        threading.Thread(target=work, daemon=True).start()
+        self._switching = threading.Thread(target=work, daemon=True)
+        self._switching.start()
+
+    def tidy_models(self) -> None:
+        """WATT 모델(system.MODELS) 중 지금 설정이 아닌 것이 올라가 있으면 내린다 — 모델을 바꾸고 곧바로 업데이트로 다시
+        켜면 내리기가 끝나기 전에 런처가 꺼져 E4B 와 12b 가 같이 남았다(2026-10-02). 다른 프로그램의 모델은 건드리지 않는다."""
+        from translator import llm
+        want = settings.load()["model"]
+        mine = {m["name"] for m in system.MODELS}
+        for name in llm.loaded():
+            if name in mine and name != want and llm.unload(name):
+                log.info("unloaded leftover model %s (using %s)", name, want)
 
     # ---- AI 글자 인식(언어별로 켜고, 켤 때 그 모델만 받는다)
     def get_ai(self) -> dict:
@@ -412,6 +423,9 @@ class Api:
                                                       "t": time.time(), "to": ver}), encoding="utf-8")
         except OSError:
             pass
+        sw = getattr(self, "_switching", None)
+        if sw and sw.is_alive():  # 모델 바꾸기(옛 모델 내리기)가 끝난 뒤에 다시 켠다
+            sw.join(15)
         self.stop_all()
         release_lock()  # 바꿔 끼우기가 끝나고 다시 켜질 새 WATT 가 잠금을 잡을 수 있게
         update.launch_apply(ver)
@@ -845,6 +859,7 @@ def main() -> int:
                                 min_size=(760, 560), frameless=True, easy_drag=False, background_color="#0A0D12")
     api._window = win
     win.events.shown += api.restore_window_rect
+    threading.Thread(target=api.tidy_models, daemon=True).start()  # 지난번에 남은 WATT 모델 정리
     win.events.closed += lambda: log.info("window closed")
     win.events.closed += api.stop_all
     try:
