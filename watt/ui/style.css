@@ -356,3 +356,96 @@ kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; backgr
 .toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px; background: var(--ctrl); font-size: 13px; box-shadow: var(--shadow); animation: fade .2s ease; max-width: 420px; }
 .toast .dot { flex: none; }
+
+/* ==== 창 크기 — 손잡이와 반응형 배치 ====================================================
+   기준(보통): 1120×740 그대로. 너비로 세 단계 — 좁음 < 900 · 보통 · 넓음 ≥ 1280(아주 넓음 ≥ 1600), 높이 < 700 이면 촘촘하게.
+   좁으면 홈의 조작 패널이 위로 올라가 가로로 눕고, 넓으면 여백과 기둥이 늘어난다. 설정 카드는 너비만큼 기둥 수가 정해진다. */
+
+/* 가장자리 손잡이 — 테두리 없는 창이라 직접(최대화 중에는 숨김) */
+.rz { position: fixed; z-index: 70; }
+.rz-n, .rz-s { left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.rz-n { top: 0; } .rz-s { bottom: 0; }
+.rz-e, .rz-w { top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.rz-e { right: 0; } .rz-w { left: 0; }
+.rz-ne, .rz-nw, .rz-se, .rz-sw { width: 12px; height: 12px; }
+.rz-ne { top: 0; right: 0; cursor: nesw-resize; } .rz-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.rz-nw { top: 0; left: 0; cursor: nwse-resize; } .rz-se { bottom: 0; right: 0; cursor: nwse-resize; }
+body.maxed .rz { display: none; }
+
+/* 번역 설정 — 카드를 신문처럼 기둥에 흘린다(너비에 맞춰 1–3 기둥, 카드는 쪼개지 않음) */
+#view-settings.on { overflow-y: auto; }
+.settings { height: auto; display: block; columns: 400px 3; column-gap: 16px; overflow: visible; }
+.settings .col { display: contents; }
+.settings .card { break-inside: avoid; margin-bottom: 16px; display: block; }
+
+/* ---- 넓음 */
+@media (min-width: 1280px) {
+  .home { padding: 24px 28px 28px; grid-template-columns: 340px minmax(0, 1fr); gap: 20px; }
+  .power { width: 148px; height: 148px; } .power > span { width: 122px; height: 122px; }
+  .setup { grid-template-columns: 264px minmax(0, 1fr); }
+  .step-detail { padding: 34px 48px 30px; }
+  .step-detail > * { width: 100%; max-width: 1000px; margin-left: auto; margin-right: auto; }
+  .settings { padding: 28px 32px; }
+  .terms, .about { padding-left: 36px; padding-right: 36px; }
+  .item .ko { font-size: 15px; }
+}
+@media (min-width: 1600px) {
+  .home { grid-template-columns: 360px minmax(0, 1fr); }
+  .feed { padding: 14px 28px 4px; }
+  .libs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* ---- 좁음 */
+@media (max-width: 899px) {
+  .brand span, .engine span { display: none; }
+  .brand { padding: 0 12px 0 14px; } .engine { padding: 0 10px; }
+  .tabs button { padding: 0 10px; font-size: 13px; }
+
+  /* 홈: 조작 패널이 위에서 가로로 — 전원 · 조작 · 오늘 / 아래 상태 4칸 */
+  .home { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding: 14px 16px 16px; gap: 12px; }
+  .ctrl-panel { display: grid; grid-template-columns: auto minmax(0, 1.1fr) minmax(0, 1fr); grid-template-areas: "power rows metrics" "status status status";
+    align-items: center; gap: 12px 14px; padding: 14px; border-radius: 16px; }
+  .ctrl-panel.on { background: radial-gradient(200px 160px at 60px 60px, rgba(59,179,211,.09), transparent 70%), var(--panel); }
+  .power { grid-area: power; width: 104px; height: 104px; margin: 0; } .power > span { width: 86px; height: 86px; } .power .ic { width: 32px; height: 32px; }
+  .ctrl-panel .rows { grid-area: rows; } .row { height: 40px; }
+  .ctrl-panel .metrics { grid-area: metrics; align-self: stretch; align-content: center; padding: 10px 2px; }
+  .metrics b { font-size: 18px; }
+  .status-grid { grid-area: status; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 0; gap: 6px; }
+  .stat { padding: 8px 10px; gap: 8px; } .stat > .ic { display: none; }
+  .feed { padding: 10px 16px 4px; }
+
+  /* 환경 설정: 단계 표시는 아이콘만 */
+  .setup { grid-template-columns: 60px minmax(0, 1fr); }
+  .rail { padding: 14px 8px; }
+  .rail-progress { flex-direction: column; gap: 6px; padding: 0 2px 12px; }
+  .rail li button { position: relative; justify-content: center; padding: 10px 0; }
+  .rail li button .nm { display: none; }
+  .rail .st { position: absolute; top: 4px; right: 4px; margin: 0; font-size: 10px; }
+  .step-detail { padding: 22px 22px 20px; gap: 18px; }
+  .step-title { font-size: 19px; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .models { grid-template-columns: minmax(0, 1fr); }
+
+  /* 번역 설정 · 용어 · 정보 */
+  .settings { padding: 16px; }
+  .select select { min-width: 150px; } .range input { width: 120px; } .path { max-width: 170px; }
+  .terms { padding: 16px 16px 14px; }
+  .terms-head { flex-direction: column; align-items: stretch; gap: 8px; }
+  .search input { width: 100%; } .terms-head .inline { justify-content: space-between; }
+  .tr { grid-template-columns: 1.2fr .8fr 1.3fr 1.3fr; gap: 10px; }
+  .tr > span:nth-child(5) { display: none; }
+  .about { padding: 28px 24px 20px; gap: 28px; }
+  .libs { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+  .welcome { gap: 40px; }
+}
+
+/* ---- 낮음(가로는 보통 이상) — 홈 조작 패널을 촘촘하게 */
+@media (max-height: 699px) and (min-width: 900px) {
+  .home { padding-top: 14px; padding-bottom: 16px; }
+  .ctrl-panel { padding: 16px 16px 14px; gap: 10px; }
+  .power { width: 112px; height: 112px; } .power > span { width: 92px; height: 92px; } .power .ic { width: 34px; height: 34px; }
+  .row { height: 42px; }
+  .metrics { padding: 10px 4px 8px; } .metrics b { font-size: 18px; }
+  .stat { padding: 7px 10px; }
+  .step-detail { padding-top: 22px; gap: 16px; }
+}

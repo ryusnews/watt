@@ -672,6 +672,81 @@ class Api:
         if self._window:
             self._window.minimize()
 
+    # ---- 창 크기 · 위치 — 테두리 없는 창이라 화면(가장자리 손잡이 · 최대화 단추)이 부른다. 좌표는 물리 픽셀
+    _maxed_from: dict | None = None
+
+    def _hwnd(self) -> int:
+        """이 프로세스의 런처 창(WinForms) — 다른 스레드에서 Form.Handle 을 읽지 않으려고 창 목록에서 찾는다."""
+        if getattr(self, "_hwnd_cache", 0) and ctypes.windll.user32.IsWindow(self._hwnd_cache):
+            return self._hwnd_cache
+        found = []
+        pid = os.getpid()
+        PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+        def each(hwnd, _):
+            p = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(p))
+            if p.value == pid and ctypes.windll.user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+                buf = ctypes.create_unicode_buffer(64)
+                ctypes.windll.user32.GetWindowTextW(ctypes.c_void_p(hwnd), buf, 64)
+                if buf.value == APP_NAME:
+                    found.append(hwnd)
+                    return False
+            return True
+        ctypes.windll.user32.EnumWindows(PROC(each), None)
+        self._hwnd_cache = found[0] if found else 0
+        return self._hwnd_cache
+
+    def get_window_rect(self) -> dict:
+        r = (ctypes.c_long * 4)()
+        ctypes.windll.user32.GetWindowRect(ctypes.c_void_p(self._hwnd()), r)
+        return {"x": r[0], "y": r[1], "w": r[2] - r[0], "h": r[3] - r[1], "maxed": self._maxed_from is not None}
+
+    def set_window_rect(self, x: int, y: int, w: int, h: int) -> None:
+        # SWP_NOZORDER | SWP_NOACTIVATE — 최소 크기는 WinForms 가 지킨다
+        ctypes.windll.user32.SetWindowPos(ctypes.c_void_p(self._hwnd()), None, int(x), int(y), int(w), int(h), 0x0004 | 0x0010)
+
+    def _work_area(self) -> tuple[int, int, int, int]:
+        """창이 있는 모니터의 작업 영역(작업 표시줄 뺀 곳)."""
+        mon = ctypes.windll.user32.MonitorFromWindow(ctypes.c_void_p(self._hwnd()), 2)  # MONITOR_DEFAULTTONEAREST
+
+        class MI(ctypes.Structure):
+            _fields_ = [("cb", ctypes.c_ulong), ("rc", ctypes.c_long * 4), ("work", ctypes.c_long * 4), ("flags", ctypes.c_ulong)]
+        mi = MI()
+        mi.cb = ctypes.sizeof(MI)
+        ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(mon), ctypes.byref(mi))
+        return mi.work[0], mi.work[1], mi.work[2] - mi.work[0], mi.work[3] - mi.work[1]
+
+    @_logged
+    def toggle_maximize(self) -> bool:
+        """최대화 ↔ 원래 크기. 창 테두리가 없으면 Windows 최대화가 작업 표시줄까지 덮어서 작업 영역에 직접 맞춘다."""
+        if self._maxed_from:
+            r, self._maxed_from = self._maxed_from, None
+            self.set_window_rect(r["x"], r["y"], r["w"], r["h"])
+            return False
+        self._maxed_from = self.get_window_rect()
+        self.set_window_rect(*self._work_area())
+        return True
+
+    def save_window_rect(self) -> None:
+        if self._maxed_from:
+            return
+        try:
+            r = self.get_window_rect()
+            paths.LAUNCHER_UI.write_text(json.dumps({k: r[k] for k in ("x", "y", "w", "h")}), encoding="utf-8")
+        except OSError:
+            pass
+
+    def restore_window_rect(self) -> None:
+        """지난번 위치 · 크기로 — 그 자리에 모니터가 없으면(모니터를 뺐음) 그대로 둔다."""
+        try:
+            r = json.loads(paths.LAUNCHER_UI.read_text(encoding="utf-8"))
+            rc = (ctypes.c_long * 4)(r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])
+            if ctypes.windll.user32.MonitorFromRect(rc, 0):  # MONITOR_DEFAULTTONULL
+                self.set_window_rect(r["x"], r["y"], r["w"], r["h"])
+        except (OSError, ValueError, KeyError):
+            pass
+
     @_logged
     def close(self) -> None:
         log.info("close button")
@@ -729,8 +804,9 @@ def main() -> int:
     screen.dpi_aware()
     api = Api()
     win = webview.create_window(APP_NAME, url=str(paths.UI / "index.html"), js_api=api, width=1120, height=740,
-                                min_size=(960, 640), frameless=True, easy_drag=False, background_color="#0A0D12")
+                                min_size=(760, 560), frameless=True, easy_drag=False, background_color="#0A0D12")
     api._window = win
+    win.events.shown += api.restore_window_rect
     win.events.closed += lambda: log.info("window closed")
     win.events.closed += api.stop_all
     try:

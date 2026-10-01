@@ -49,6 +49,48 @@ window.WATT = {
   },
 };
 
+/* ---------- 창 크기 — 테두리 없는 창이라 가장자리 손잡이와 최대화를 직접 둔다(좌표는 물리 픽셀) ---------- */
+async function toggleMax() {
+  const maxed = await call('toggle_maximize');
+  document.body.classList.toggle('maxed', !!maxed);
+  $('#max-icon').setAttribute('href', maxed ? '#i-restore' : '#i-max');
+  $('#btn-max').setAttribute('aria-label', maxed ? '이전 크기로' : '최대화');
+}
+function setupResize() {
+  for (const e of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+    const d = document.createElement('div'); d.className = `rz rz-${e}`; d.dataset.edge = e; d.setAttribute('aria-hidden', 'true'); document.body.appendChild(d);
+  }
+  let drag = null, busy = false, next = null;
+  const send = async () => {  // 앞 요청이 끝나야 다음 것을 보낸다 — 끌기가 밀리지 않게 마지막 것만
+    if (busy || !next) return;
+    busy = true; const r = next; next = null;
+    try { await S.api.set_window_rect(r.x, r.y, r.w, r.h); } catch (e) { /* 창이 닫히는 중 */ }
+    busy = false; send();
+  };
+  document.addEventListener('pointerdown', async (ev) => {
+    const el = ev.target.closest('.rz');
+    if (!el || document.body.classList.contains('maxed') || !S.api.get_window_rect) return;
+    ev.preventDefault(); el.setPointerCapture(ev.pointerId);
+    const start = { edge: el.dataset.edge, x0: ev.screenX, y0: ev.screenY };
+    start.r = await S.api.get_window_rect(); drag = start;
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const k = window.devicePixelRatio || 1, e = drag.edge, r = drag.r;
+    const dx = (ev.screenX - drag.x0) * k, dy = (ev.screenY - drag.y0) * k, minW = 760 * k, minH = 560 * k;
+    let { x, y, w, h } = r;
+    if (e.includes('e')) w = Math.max(minW, r.w + dx);
+    if (e.includes('s')) h = Math.max(minH, r.h + dy);
+    if (e.includes('w')) { w = Math.max(minW, r.w - dx); x = r.x + r.w - w; }
+    if (e.includes('n')) { h = Math.max(minH, r.h - dy); y = r.y + r.h - h; }
+    next = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }; send();
+  });
+  const end = () => { if (drag) { drag = null; setTimeout(() => S.api.save_window_rect && S.api.save_window_rect(), 300); } };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+  // 창을 옮긴 뒤(제목 막대 끌기)에도 위치를 기억
+  $$('.pywebview-drag-region').forEach((d) => d.addEventListener('mouseup', () => setTimeout(() => S.api.save_window_rect && S.api.save_window_rect(), 400)));
+}
+
 /* ---------- 화면 전환 ---------- */
 function show(view) {
   S.view = view;
@@ -166,7 +208,7 @@ function renderSetup() {
     const k = stepState(s.key);
     const p = S.progress[TASK_OF[s.key]];
     const mark = k === 'done' ? '✓' : k === 'run' ? (p && p.total ? `${pct(p)}%` : '…') : (s.key === 'test' ? '' : '!');
-    return `<li><button data-step="${i}" class="${i === S.step ? 'on' : ''}">${icon(s.icon)}<span>${esc(s.name)}</span>
+    return `<li><button data-step="${i}" class="${i === S.step ? 'on' : ''}" aria-label="${esc(s.name)}">${icon(s.icon)}<span class="nm">${esc(s.name)}</span>
       <span class="st ${k === 'todo' && s.key === 'test' ? '' : k}">${mark}</span></button></li>`;
   }).join(''));
   const s = STEPS[S.step];
@@ -566,6 +608,9 @@ function toast(text, kind = 'info') {
 function bind() {
   $$('.tabs button').forEach((b) => b.addEventListener('click', () => show(b.dataset.view)));
   $('#btn-min').onclick = () => call('minimize');
+  $('#btn-max').onclick = toggleMax;
+  $$('.pywebview-drag-region').forEach((d) => d.addEventListener('dblclick', toggleMax));
+  setupResize();
   $('#btn-close').onclick = () => call('close');
   $('#btn-help').onclick = () => coach(true);
   $('#btn-welcome').onclick = () => { save({ welcomed: true }, true); S.step = 0; show('setup'); };
@@ -742,6 +787,7 @@ function mockApi() {
       sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092 } }),
     set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
     remove_ai: () => ok({}),
+    toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
