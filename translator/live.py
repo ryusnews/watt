@@ -85,14 +85,15 @@ def english_garbled(text: str) -> bool:
 # 이름 뒤 콜론을 마침표·쉼표로 읽는 경우도 받는다([6] [Skiddo Prime]. LF3M BFD)
 # 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
 # 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
-HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]"
+HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ]"
                     r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
 
 
 # 줄 앞에 무엇이 붙든(기본 채팅 [1. 공개 - 오그리마] · 시간 표시 · 애드온) 마지막 [이름]: 을 머리로 —
 # 왼쪽 여백에서 시작하는 줄에만 쓴다(들여쓴 뒷줄의 [아이템]: 을 머리로 오인하지 않게). #10 의 첫 단계
-GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ1I|]"
-                     r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：]\s*(?P<body>.*)$")
+GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ1I|]"
+                     r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers"
+                     r"|[^\s:：\[\]]{1,4}(?:\s+[^\s:：\[\]]{1,4}){0,2})?\s*[:：]\s*(?P<body>.*)$")  # 끝: 깨진 '님의 외침'(Е91 91 Е)
 PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개] · [6] — [12:30] 같은 시간은 아님
 
 
@@ -152,6 +153,15 @@ def find_region() -> dict:
 
 
 # ---- 줄 고르기 · 메시지 만들기
+HEAD_CUT = re.compile(r"^.{0,72}?[\]〕)lJ1I|]\s*(?:님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?)?\s*[:：]\s*")
+
+
+def body_of(text: str) -> str:
+    """언어 판정용 본문 — 머리([6. 파티찾기] [이름]:)를 뺀다. 기본 채팅은 머리에 한국어 채널 이름이 붙고 이름은 라틴이라,
+    머리째 판정하면 한국어 본문이 영어로, 영어 본문이 한국어로 갈린다(2026-10-01 모니터링)."""
+    return HEAD_CUT.sub("", text or "", count=1)
+
+
 def pick_lines(lines: dict, line_h: int) -> list[dict]:
     """엔진들의 같은 위치 줄 중 그럴듯한 것: 한글 → ko, 한자 → zh, 진짜 러시아어(키릴 60%↑) → ru, 그 밖 → en."""
     en, ko, zh, ru = (lines.get("en-US") or [], lines.get("ko") or [], lines.get("zh-Hans-CN") or [],
@@ -168,9 +178,9 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         def by(src):
             return next((l for l in row if l in src), None)
         k, z, e, r = by(ko), by(zh), by(en), by(ru)
-        feat = {"hangul": len(HANGUL.findall(k["t"])) if k else 0, "ko": bool(k and looks_korean(k["t"])),
-                "zh": bool(z and looks_chinese(z["t"])), "ru": bool(r and looks_russian(r["t"])),
-                "en_garbled": bool(e and english_garbled(e["t"]))}
+        feat = {"hangul": len(HANGUL.findall(body_of(k["t"]))) if k else 0, "ko": bool(k and looks_korean(body_of(k["t"]))),
+                "zh": bool(z and looks_chinese(body_of(z["t"]))), "ru": bool(r and looks_russian(body_of(r["t"]))),
+                "en_garbled": bool(e and english_garbled(body_of(e["t"])))}
         if feat["ko"]:
             chosen, lang = k, "ko"
         elif feat["zh"]:
@@ -483,6 +493,7 @@ class Live:
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
         self.seen = Seen()
+        self.seen_body = Seen(30)  # 이름을 매번 다르게 읽어도(舜应盖特 · 舜廐 盖碍) 같은 글이면 한 번만
         self.ads = AdFilter()
         self.cache: dict[str, str] = {}
         self.stats = {"frames": 0, "changed": 0, "ocr_ms": 0, "translated": 0, "tr_s": 0.0}
@@ -599,6 +610,11 @@ class Live:
             if not key:
                 continue
             new, sim, near = self.seen.check(key)
+            body_key = norm(m["body"])
+            if new and len(body_key) >= 4:
+                new_b, sim_b, near_b = self.seen_body.check(body_key)
+                if not new_b:
+                    new, sim, near = False, sim_b, near_b
             if not new:
                 if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
                     events.append(("dup", {"body": m["body"], "near": near, "sim": round(sim, 3), "lang": m["lang"]}))
