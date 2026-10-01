@@ -41,6 +41,14 @@ RUNTIME_DIR = AI_DIR / "runtime"
 MODEL_DIR = AI_DIR / "models"
 
 CJK = re.compile(r"[぀-ヿ㐀-鿿가-힣＀-￯]")
+_HAN = re.compile(r"[一-鿿]")
+_HANGUL = re.compile(r"[가-힣]")
+_CYR = re.compile(r"[Ѐ-ӿ]")
+# 이 줄에 이 언어 모델이 필요한가 — Windows 엔진이 읽은 같은 줄로 본다(모델 3개를 모든 줄에 돌리면 게임 중 띠 하나에 ~0.8초).
+# 한국어 엔진은 한자를 한자로, 러시아어 엔진은 키릴을 키릴로 읽는다. 못 알아본 줄은 Windows 것이 그대로 남는다(ocr.read_lines)
+NEED = {"ko": lambda h: len(_HANGUL.findall(h.get("ko", ""))) >= 2,
+        "zh": lambda h: bool(_HAN.search(h.get("ko", ""))),
+        "ru": lambda h: len(_CYR.findall(h.get("ru-RU", ""))) >= 3}
 
 
 def import_runtime():
@@ -222,17 +230,25 @@ class AiOcr:
         flush()
         return out
 
-    def lines(self, bgra: np.ndarray, scale: float) -> dict[str, list[dict]]:
-        """확대한 화면(bgra) → 켠 언어의 Windows 엔진 자리별 줄 [{t, x, y, h, w}](원래 좌표)."""
+    def lines(self, bgra: np.ndarray, scale: float, hints: dict | None = None) -> dict[str, list[dict]]:
+        """확대한 화면(bgra) → 켠 언어의 Windows 엔진 자리별 줄 [{t, x, y, h, w}](원래 좌표).
+        hints: Windows 엔진이 읽은 줄(엔진 자리별, 원래 좌표) — 주면 그 언어가 보이는 줄만 AI 로 읽는다."""
         bgr = np.ascontiguousarray(bgra[..., :3])
         boxes = self.boxes(bgr)
-        crops = [bgr[y0:y1, x0:x1] for x0, y0, x1, y1 in boxes]
-        prepared = self.prepare(crops) if crops else []
+        texts = []  # 상자마다 Windows 엔진들이 읽은 글
+        for x0, y0, x1, y1 in boxes:
+            a, b = y0 / scale, y1 / scale
+            texts.append({k: " ".join(l["t"] for l in ls if min(b, l["y"] + l["h"]) - max(a, l["y"]) > 0.4 * (b - a))
+                          for k, ls in (hints or {}).items()})
         out = {}
         for lg in self.rec:
-            got = self.recognize(lg, crops, prepared) if crops else []
+            # 읽을 화면(새 줄 띠)에 그 언어가 한 줄이라도 보이면 전부, 없으면 그 모델은 건너뛴다. 줄마다 고르면 같은 메시지의
+            # 머리 줄(Windows 가 Гільдія 를 TinbAia 로 읽음)을 건너뛰어 이름이 사라졌다(정답 표본 이름 98 → 95%)
+            idx = list(range(len(boxes))) if hints is None or any(NEED[lg](x) for x in texts) else []
+            crops = [bgr[boxes[i][1]:boxes[i][3], boxes[i][0]:boxes[i][2]] for i in idx]
+            got = self.recognize(lg, crops) if crops else []
             ls = []
-            for (x0, y0, x1, y1), (text, chars) in zip(boxes, got):
+            for (x0, y0, x1, y1), (text, chars) in zip([boxes[i] for i in idx], got):
                 text = text.strip()
                 if not text:
                     continue

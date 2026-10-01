@@ -112,7 +112,8 @@ class Ocr:
         lines = {k: self.lines_of(r, scale) for k, r in self.recognize(big).items()}
         if self.ai:
             try:
-                for k, ai_ls in self.ai.lines(big, scale).items():
+                hints = {k: [{a: b for a, b in l.items() if a in ("t", "y", "h")} for l in ls] for k, ls in lines.items()}
+                for k, ai_ls in self.ai.lines(big, scale, hints).items():
                     # AI 가 글자 상자를 못 찾은 줄은 Windows 엔진 것을 남긴다 — 통째로 바꾸면 그 줄이 사라졌다
                     # (러시아어 '[Катя Мизулина]: Ищешь…' 를 Windows 는 읽었는데 AI 가 놓쳐 메시지가 깨짐, 2026-10-01)
                     def covered(w):

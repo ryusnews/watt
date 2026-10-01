@@ -887,7 +887,8 @@ class Live:
             else:
                 decision = "queued"
             first_body = m["body"]
-            if decision == "queued" and not m.get("pass") and not m.get("repeat") and self.ocr.last_img is not None:  # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
+            if decision == "queued" and not m.get("pass") and not m.get("repeat") and self.ocr.last_img is not None                     and not self.ocr.ocr.ai:  # AI 글자 인식을 켜면 다시 읽기는 끈다 — 정답 표본에서 오히려 낮았고(이름 98.0 → 97.0) CPU 를 세 배로 썼다
+                # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
                 try:
                     m.update(refine(m, self.ocr.last_img, lh, self.ocr.ocr))
                 except Exception as e:  # 다시 읽기가 안 되면 처음 읽은 그대로
@@ -938,7 +939,7 @@ class Live:
                 if self.ocr.save_last(path):
                     frame_png = str(path.relative_to(paths.DATA))
                     self.last_save = time.time()
-        self.trace.write("frame", no=self.frame_no, ocr_ms=r.get("ms"), diff=r.get("diff"),
+        self.trace.write("frame", no=self.frame_no, ocr_ms=r.get("ms"), diff=r.get("diff"), how=r.get("how"),
                          loop_ms=int((time.monotonic() - t0) * 1000),
                          rows=len(rows), msgs=len(msgs), queued=len(queued), orphans=len(orphans), png=frame_png)
         for ev, data in events:
