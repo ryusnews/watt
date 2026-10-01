@@ -270,7 +270,7 @@ class Reader:
             # 작은 글꼴(Prat 기본 등)은 영어 엔진만 3배로 다시 — 2배로는 g 를 q 로(Gg Friggenez → Gq Friaqenez), Graveborn 을
             # raveborn 으로 읽었다. 엔진 넷을 다 3배로 하면 기본 채팅의 작은 화면에서 머리 괄호를 잘못 읽어 메시지를 놓쳤다(2026-10-01)
             lines["en-US"] = self.ocr.engine_lines("en-US", screen.upscale3(img), 3)
-        return {e: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")}, "y": l["y"] + top} for l in ls]
+        return {e: [{**{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w", "ai")}, "y": l["y"] + top} for l in ls]
                 for e, ls in lines.items()}
 
     def small_font(self) -> bool:

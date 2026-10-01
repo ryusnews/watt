@@ -46,10 +46,11 @@ CJK = re.compile(r"[぀-ヿ㐀-鿿가-힣＀-￯]")
 _HAN = re.compile(r"[一-鿿]")
 _HANGUL = re.compile(r"[가-힣]")
 _CYR = re.compile(r"[Ѐ-ӿ]")
+_LATIN = re.compile(r"[A-Za-z]")
 # 이 줄에 이 언어 모델이 필요한가 — Windows 엔진이 읽은 같은 줄로 본다(모델 3개를 모든 줄에 돌리면 게임 중 띠 하나에 ~0.8초).
 # 한국어 엔진은 한자를 한자로, 러시아어 엔진은 키릴을 키릴로 읽는다. 못 알아본 줄은 Windows 것이 그대로 남는다(ocr.read_lines)
 NEED = {"ko": lambda h: len(_HANGUL.findall(h.get("ko", ""))) >= 2,
-        "zh": lambda h: bool(_HAN.search(h.get("ko", ""))),
+        "zh": lambda h: bool(_HAN.search(h.get("ko", ""))) or len(_LATIN.findall(h.get("en-US", ""))) >= 6,  # 영어 본문도(live.pick_lines)
         "ru": lambda h: len(_CYR.findall(h.get("ru-RU", ""))) >= 3}
 
 
@@ -89,6 +90,7 @@ def resize(img: np.ndarray, h: int, w: int) -> np.ndarray:
 
 class AiOcr:
     REC_H = 48
+    CORE_H = 1.75  # 글자 높이 / 가운데 띠 높이(Windows 엔진 줄 높이에 맞춤)
     BATCH = 32
 
     def __init__(self, langs: list[str], gpu: bool = True):
@@ -126,6 +128,7 @@ class AiOcr:
         x[:h, :w] = bgr
         x = ((x / 255 - 0.5) / 0.5).transpose(2, 0, 1)[None]
         prob = self.det.run(None, {self.det.get_inputs()[0].name: x})[0][0, 0, :h, :w]
+        self.core = {}
         bm = prob > 0.3
         bm[1:] |= bm[:-1].copy()  # 2×2 넓히기
         bm[:, 1:] |= bm[:, :-1].copy()
@@ -169,7 +172,9 @@ class AiOcr:
                     continue
                 bw, bh = x1 - x0, b - a
                 d = bw * bh * 1.6 / (2 * (bw + bh))  # 줄인 글자 영역을 다시 넓힌다(unclip)
-                out.append((max(0, int(x0 - d)), max(0, int(a - d)), min(w, int(x1 + d)), min(h, int(b + d))))
+                box = (max(0, int(x0 - d)), max(0, int(a - d)), min(w, int(x1 + d)), min(h, int(b + d)))
+                out.append(box)
+                self.core[box] = (a, b)  # 줄인 글자 영역(글자 가운데 띠) — 줄 위치를 여기서 잰다
         return [o for o in out if o[2] - o[0] >= 4 and o[3] - o[1] >= 4]
 
     # ---- 글자 읽기(CTC) — 글자마다 가로 위치도
@@ -272,6 +277,13 @@ class AiOcr:
             a, b = y0 / scale, y1 / scale
             texts.append({k: " ".join(l["t"] for l in ls if min(b, l["y"] + l["h"]) - max(a, l["y"]) > 0.4 * (b - a))
                           for k, ls in (hints or {}).items()})
+        # 줄 위치는 넓힌 상자가 아니라 글자 가운데 띠(core)에서 — 상자는 줄 간격이 좁으면 이웃 줄까지 덮어(Prat 17px 줄에 25px)
+        # 위로 치우쳐, 윗줄의 Windows 엔진 결과와 같은 줄로 묶였다(이름이 다음 메시지에 붙음, 2026-10-01). 글자 높이 ≈ 띠 × CORE_H
+        ink_rows = {}
+        for bx in boxes:
+            a, b = self.core.get(bx, (bx[1], bx[3]))
+            c, hh = (a + b) / 2, (b - a) * self.CORE_H
+            ink_rows[bx] = (int(c - hh / 2), int(c + hh / 2))
         out = {}
         for lg in self.rec:
             # 읽을 화면(새 줄 띠)에 그 언어가 한 줄이라도 보이면 전부, 없으면 그 모델은 건너뛴다. 줄마다 고르면 같은 메시지의
@@ -286,6 +298,8 @@ class AiOcr:
                     continue
                 half = (y1 - y0) * 0.25
                 ws = self.words(chars, x0, scale, half) or [[text, int(x0 / scale), int(x1 / scale)]]
-                ls.append({"t": text, "x": int(x0 / scale), "y": int(y0 / scale), "h": int((y1 - y0) / scale), "w": ws})
+                gy0, gy1 = ink_rows[(x0, y0, x1, y1)]
+                ls.append({"t": text, "x": int(x0 / scale), "y": int(gy0 / scale), "h": max(1, int((gy1 - gy0) / scale)), "w": ws,
+                           "ai": True})
             out[ENGINE_KEY[lg]] = ls
         return out

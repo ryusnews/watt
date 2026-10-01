@@ -122,20 +122,26 @@ def english_garbled(text: str) -> bool:
 # 이름 뒤 콜론을 마침표·쉼표로 읽는 경우도 받는다([6] [Skiddo Prime]. LF3M BFD)
 # 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
 # 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
-HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ]"
+HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJj|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJj]"
                     r"\s*(?P<kind>님\s?(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
 
 
 # 줄 앞에 무엇이 붙든(기본 채팅 [1. 공개 - 오그리마] · 시간 표시 · 애드온) 마지막 [이름]: 을 머리로 —
 # 왼쪽 여백에서 시작하는 줄에만 쓴다(들여쓴 뒷줄의 [아이템]: 을 머리로 오인하지 않게). #10 의 첫 단계
-GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJ1I|]"
+GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJj1I|]"
                      r"\s*(?P<kind>님\s?(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers"
                      r"|[^\s:：\[\]()（]{1,4}(?:\s+[^\s:：\[\]()（]{1,4}){0,3})?\s*[:：]\s*(?P<body>.*)$")  # 끝: 깨진 '님의 외침'(Е91 91 Е)
 PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개] · [6] — [12:30] 같은 시간은 아님
 
 
+# 채팅 애드온의 시간 표시([23:10:02] · [23:10] · 23:10:02) — 머리를 읽기 전에 뗀다. 그대로 두면 '[23:' 을 이름으로,
+# '10' 의 1 을 닫는 괄호로 읽어 이름이 '23:', 본문이 '02] [2] [이름]: …' 가 됐다(Prat, 2026-10-01)
+TIMESTAMP = re.compile(r"^\s*[\[〔(]?\s*\d{1,2}\s*[:：.]\s*\d{2}(?:\s*[:：.]\s*\d{2})?\s*[\]〕)jlI|]?\s*")
+
+
 def parse_header(text: str, generic: bool = False) -> dict | None:
     """{ch, name, body} — [6] [이름]: 꼴, generic 이면 앞에 무엇이 붙은 [이름]: 도."""
+    text = TIMESTAMP.sub("", text or "", count=1)
     m = HEADER.match(text or "")
     if m:
         return {"ch": _channel(m), "name": m.group("name"), "body": m.group("body")}
@@ -273,6 +279,12 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
             chosen, lang = r, "ru"  # 영어 엔진이 깨끗하게 읽은 줄은 영어로 둔다(짧은 영어가 가짜 키릴로 읽힐 때)
         else:
             chosen, lang = (e or k or z or r), "en"  # 러시아어 엔진만 찾은 줄도 있다
+        if lang == "en" and z and z.get("ai"):
+            zb = body_of(z["t"])
+            if zb and not CJK.search(zb) and len(LATIN.findall(zb)) >= 0.7 * max(1, _letters(zb)):
+                # 영어 본문은 AI 중국어 모델 것으로(머리는 그대로 한국어 엔진) — Windows 영어 엔진은 작은 글꼴에서 3배로 읽어도
+                # g 를 q · a 로(lookinq … qroup, aot), AI 는 looking … group, got(2026-10-01). 줄째 바꾸면 머리가 깨져 메시지를 놓쳤다
+                chosen = z
         text = compose(k, chosen, lang, line_h) if lang != "ko" else chosen["t"]
         text = CJK_GAP.sub("", text) if lang == "zh" else text
         if lang == "en":
@@ -341,7 +353,7 @@ def read_variant(eng, img: np.ndarray, k: float, line_h: int) -> list[dict]:
     """조각 하나를 k 배로 읽어 메시지로(좌표는 조각 기준 원래 크기)."""
     from watt import screen
     big = screen.upscale2(img) if k == 2 else screen.upscale(img, k)
-    lines = {lg: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in v]
+    lines = {lg: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w", "ai")} for l in v]
              for lg, v in eng.read_lines(big, k).items()}
     rows = pick_lines(lines, line_h)
     return build_messages(rows, line_pitch(rows, line_h))
