@@ -110,6 +110,8 @@ class Api:
             game["flavor"] = system.FLAVORS.get(os.path.basename(os.path.dirname(game["path"])), game["exe"])
         vram = (self._sys.get("gpu") or {}).get("vram_gb", 0)
         model_ok = any(m["name"] == cfg["model"] for m in ol["models"])
+        mine = system.installed_by_watt()
+        ol["watt"] = mine["ollama"]
         live = self._live_status()
         steps = {
             "system": "done",
@@ -124,8 +126,8 @@ class Api:
             "app": {"name": APP_NAME, "full": APP_FULL, "version": VERSION, "data": str(paths.DATA),
                     "portable": paths.PORTABLE},
             "settings": cfg, "system": self._sys, "ocr": oc, "ollama": ol,
-            "removable_ocr": sorted(system.REMOVABLE_OCR),
-            "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]),
+            "removable_ocr": mine["ocr"], "watt_installed": mine,
+            "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]), "watt": m["name"] in mine["models"],
                         "recommended": m["name"] == system.recommend_model(vram)} for m in system.MODELS],
             "game": game and {"exe": game["exe"], "flavor": game["flavor"], "w": game["w"], "h": game["h"]},
             "region": region, "steps": steps,
@@ -309,6 +311,8 @@ class Api:
     def delete_model(self, name: str) -> dict:
         if name in self._busy:
             raise RuntimeError("받는 중인 모델은 지울 수 없습니다")
+        if name not in system.read_list(paths.INSTALLED_MODELS):
+            raise RuntimeError("WATT 가 받지 않은 모델은 지우지 않습니다")
         return system.model_delete(name)
 
     @_logged
@@ -323,8 +327,35 @@ class Api:
 
     @_logged
     def uninstall_ollama(self) -> dict:
+        if not system.installed_by_watt()["ollama"]:
+            raise RuntimeError("WATT 가 설치하지 않은 Ollama 는 제거하지 않습니다")
         self.stop_all()  # 통역 창·입력창이 Ollama 를 쓰고 있다
         return self._task("ollama", lambda c: system.ollama_uninstall())
+
+    @_logged
+    def cleanup_installed(self) -> dict:
+        """WATT 가 설치한 것 모두 되돌리기(포터블은 삭제 프로그램이 없으므로) — 모델 → OCR 팩 → 애드온 → Ollama."""
+        def work(cancel):
+            mine, done = system.installed_by_watt(), []
+            self.stop_all()
+            for m in mine["models"]:
+                try:
+                    system.model_delete(m)
+                    done.append(m)
+                except Exception as e:
+                    log.warning("model delete %s: %s", m, e)
+            if mine["ocr"]:
+                system.remove_ocr(mine["ocr"])
+                done += [c for c in mine["ocr"] if c not in system.read_list(paths.INSTALLED_OCR)]
+            for d in mine["addons"]:
+                system.remove_addon(d)
+                done.append(d)
+            if mine["ollama"]:
+                system.ollama_uninstall()
+                done.append("ollama")
+            self._game_list(force=True)
+            return {"done": done, "left": system.installed_by_watt()}
+        return self._task("cleanup", work)
 
     @_logged
     def use_model(self, name: str) -> dict:
@@ -533,7 +564,8 @@ def main() -> int:
     win.events.closed += lambda: log.info("window closed")
     win.events.closed += api.stop_all
     try:
-        webview.start(gui="edgechromium", debug=bool(os.environ.get("WATT_DEBUG")))
+        # 캐시를 데이터 폴더 안에 — 기본값은 켤 때마다 %TEMP% 에 새 폴더를 남긴다(정리되지 않음)
+        webview.start(gui="edgechromium", debug=bool(os.environ.get("WATT_DEBUG")), storage_path=str(paths.WEBVIEW))
     except Exception:
         log.critical("webview crashed", exc_info=True)
         raise

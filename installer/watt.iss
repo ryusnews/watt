@@ -62,9 +62,13 @@ Filename: "{app}\WATT.exe"; Flags: nowait; Check: IsRelaunch
 [CustomMessages]
 korean.AskModels=WATT 로 받은 AI 번역 모델도 지울까요?%n(수 GB · Ollama 프로그램은 남습니다)
 korean.AskAddons=게임 폴더의 글꼴 애드온(ChatFontCJK)도 지울까요?
+korean.AskOcr=WATT 가 설치한 글자 인식 언어 팩도 지울까요?%n(원래 있던 언어 팩은 그대로 · Windows 권한 확인 창이 뜹니다)
+korean.AskOllama=WATT 가 설치한 Ollama(AI 실행기)도 제거할까요?%n(Ollama 제거 프로그램이 열립니다)
 korean.AskData=WATT 설정과 기록(채팅 기록 포함)도 지울까요?
 english.AskModels=Also remove the AI translation models WATT downloaded?%n(several GB; Ollama itself stays)
 english.AskAddons=Also remove the ChatFontCJK font addon from your game folder?
+english.AskOcr=Also remove the text recognition language packs WATT installed?%n(packs you had before stay; Windows will ask for permission)
+english.AskOllama=Also uninstall Ollama, which WATT installed?%n(the Ollama uninstaller will open)
 english.AskData=Also remove WATT settings and logs (including chat logs)?
 
 [Code]
@@ -101,6 +105,42 @@ begin
       Exec(OllamaExe, 'rm ' + Trim(Lines[I]), '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
+function CapName(const Code: String): String;
+begin
+  if Code = 'zh-Hans-CN' then Result := 'Language.OCR~~~zh-CN~0.0.1.0'
+  else if Code = 'ru-RU' then Result := 'Language.OCR~~~ru-RU~0.0.1.0'
+  else if Code = 'ko' then Result := 'Language.OCR~~~ko-KR~0.0.1.0'
+  else if Code = 'en-US' then Result := 'Language.OCR~~~en-US~0.0.1.0'
+  else Result := '';
+end;
+
+procedure RemoveOcr(const Lines: TArrayOfString);
+var
+  I, Err: Integer;
+  Cmd: String;
+begin
+  Cmd := '';
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if CapName(Trim(Lines[I])) <> '' then
+    begin
+      if Cmd <> '' then Cmd := Cmd + ' & ';
+      Cmd := Cmd + 'dism /Online /Remove-Capability /CapabilityName:' + CapName(Trim(Lines[I])) + ' /NoRestart';
+    end;
+  if Cmd <> '' then
+    ShellExec('runas', 'cmd.exe', '/c ' + Cmd, '', SW_SHOW, ewWaitUntilTerminated, Err);
+end;
+
+procedure RemoveOllama(const Lines: TArrayOfString);
+var
+  Code: Integer;
+  Unins: String;
+begin
+  if GetArrayLength(Lines) = 0 then Exit;
+  Unins := Trim(Lines[0]) + '\unins000.exe';
+  if FileExists(Unins) then
+    Exec(Unins, '', '', SW_SHOW, ewWaitUntilTerminated, Code);
+end;
+
 procedure RemoveAddons(const Lines: TArrayOfString);
 var
   I: Integer;
@@ -122,6 +162,12 @@ begin
   if ReadList('installed_models.txt', Lines) then
     if SuppressibleMsgBox(CustomMessage('AskModels'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       RemoveModels(Lines);
+  if ReadList('installed_ollama.txt', Lines) then
+    if SuppressibleMsgBox(CustomMessage('AskOllama'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      RemoveOllama(Lines);
+  if ReadList('installed_ocr.txt', Lines) then
+    if SuppressibleMsgBox(CustomMessage('AskOcr'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      RemoveOcr(Lines);
   if ReadList('installed_addons.txt', Lines) then
     if SuppressibleMsgBox(CustomMessage('AskAddons'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       RemoveAddons(Lines);

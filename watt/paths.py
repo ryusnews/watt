@@ -44,6 +44,9 @@ DOWNLOADS = DATA / "downloads"
 # WATT 가 직접 넣은 것 — 삭제 프로그램이 읽어 이것만 지운다(installer/watt.iss). 한 줄에 하나
 INSTALLED_ADDONS = DATA / "installed_addons.txt"   # 애드온을 넣은 게임 폴더
 INSTALLED_MODELS = DATA / "installed_models.txt"   # WATT 로 받은 Ollama 모델
+INSTALLED_OCR = DATA / "installed_ocr.txt"         # WATT 가 설치한 OCR 언어 팩(원래 있던 팩은 적지 않는다)
+INSTALLED_OLLAMA = DATA / "installed_ollama.txt"   # WATT 가 설치한 Ollama 폴더(원래 있었으면 비어 있음)
+WEBVIEW = DATA / "webview"                         # 런처 창(WebView2) 캐시 — 데이터와 함께 지워지게
 
 
 def ensure() -> None:

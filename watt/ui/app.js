@@ -38,6 +38,7 @@ window.WATT = {
         if (ev.task === 'pull') toast('모델을 받았습니다', 'ok');
         if (ev.task === 'ocr') toast('글자 인식 언어 팩을 확인했습니다', 'ok');
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
+        if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
         if (ev.task === 'update' && ev.result && ev.result.opened) toast('릴리스 페이지를 열었습니다');
         if (ev.task === 'update' && ev.result && ev.result.installing) toast(`WATT ${ev.result.installing} 설치 중. 곧 다시 켜집니다`, 'ok');
       }
@@ -209,7 +210,7 @@ const DETAIL = {
     let prog = '';
     if (run) prog = p && p.total ? `<div class="box"><div class="head"><span class="grow mono muted">OllamaSetup.exe</span><span class="pct">${pct(p)}%</span></div>
       <div class="progress"><i style="width:${pct(p)}%"></i></div></div>` : '<div class="progress indet"><i></i></div>';
-    const remove = o.installed && !run ? `<button class="btn ghost-danger" data-act="uninstall_ollama" data-tip="Ollama 제거 프로그램을 엽니다">제거</button>` : '';
+    const remove = o.installed && o.watt && !run ? `<button class="btn ghost-danger" data-act="uninstall_ollama" data-tip="WATT 가 설치한 Ollama 를 제거합니다">제거</button>` : '';
     const action = !o.installed ? `<button class="btn primary" data-act="install_ollama" ${run ? 'disabled' : ''}>${icon('i-download', 'sm')}설치</button>`
       : `<span class="inline">${remove}${!o.running ? `<button class="btn primary" data-act="start_ollama" ${run ? 'disabled' : ''}>${icon('i-power', 'sm')}켜기</button>` : ''}</span>`;
     return [chips + prog, action];
@@ -220,7 +221,7 @@ const DETAIL = {
       const tags = [m.recommended ? '<span class="badge bronze">추천</span>' : '', m.installed ? '<span class="badge ok">받음</span>' : '',
         !m.verified ? '<span class="badge">검증 전</span>' : ''].join('');
       const busy = (p || st.busy.includes('pull'));
-      const trash = m.installed && !busy ? `<button class="trash" data-act="delete_model" data-name="${esc(m.name)}" data-label="${esc(m.label)}" data-size="${m.download_gb}" aria-label="${esc(m.label)} 지우기" data-tip="모델 지우기">${icon('i-trash', 'sm')}</button>` : '';
+      const trash = m.installed && m.watt && !busy ? `<button class="trash" data-act="delete_model" data-name="${esc(m.name)}" data-label="${esc(m.label)}" data-size="${m.download_gb}" aria-label="${esc(m.label)} 지우기" data-tip="모델 지우기">${icon('i-trash', 'sm')}</button>` : '';
       return `<div class="model ${m.name === sel ? 'sel' : ''}" role="radio" tabindex="0" aria-checked="${m.name === sel}" data-model="${esc(m.name)}">
         <span class="n">${esc(m.label)}<span class="radio"></span></span>
         <span class="m"><span>${m.download_gb}GB</span><span>VRAM ${Math.round(m.vram_gb)}GB</span></span>
@@ -497,6 +498,14 @@ function bind() {
   $('#set-update').onclick = () => { save({ update_check: !S.state.settings.update_check }); renderSettings(); };
   $('#btn-update').onclick = () => applyUpdate();
   $('#btn-check-update').onclick = () => checkUpdate(true);
+  $('#btn-cleanup').onclick = async () => {
+    const w = (S.state && S.state.watt_installed) || {};
+    const parts = [w.models && w.models.length ? `모델 ${w.models.length}` : '', w.ocr && w.ocr.length ? `언어 팩 ${w.ocr.length}` : '',
+      w.addons && w.addons.length ? `애드온 ${w.addons.length}` : '', w.ollama ? 'Ollama' : ''].filter(Boolean);
+    if (!parts.length) { toast('WATT 가 설치한 것이 없습니다'); return; }
+    if (!(await confirmBox('설치한 것 정리', `${parts.join(' · ')} · 원래 있던 것은 그대로 둡니다`, '정리'))) return;
+    call('cleanup_installed');
+  };
   $('#set-game').onchange = (e) => { save({ game_dir: e.target.value }); S.selGame = e.target.value; renderSettings(); };
   $('#set-pickgame').onclick = () => pickFolder();
   // 용어 사전
@@ -573,7 +582,8 @@ function mockApi() {
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),
-    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }), use_model: (n) => ok(Object.assign(settings, { model: n })),
+    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }),
+    cleanup_installed: () => ok({ started: true }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
   };

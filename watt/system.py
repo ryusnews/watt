@@ -133,28 +133,37 @@ def ocr_status() -> dict:
 
 def install_ocr(codes: list[str]) -> dict:
     """빠진 OCR 언어 팩을 DISM 으로 설치 — 관리자 권한 창 하나에서 차례로(창에 진행 상황이 보인다)."""
-    caps = [ocr.PACKS[c] for c in codes if c in ocr.PACKS]
+    before = ocr.installed()
+    codes = [c for c in codes if c in ocr.PACKS and not before.get(c)]
+    caps = [ocr.PACKS[c] for c in codes]
     if not caps:
         return ocr_status()
     cmd = " & ".join(f"dism /Online /Add-Capability /CapabilityName:{c} /NoRestart" for c in caps)
     code = run_elevated("cmd.exe", f'/c "echo WATT: Windows OCR 언어 팩 설치 중 — 창이 닫힐 때까지 기다려 주세요 & {cmd}"')
+    after = ocr.installed()
+    for c in codes:
+        if after.get(c):
+            remember(paths.INSTALLED_OCR, c)
     st = ocr_status()
     st["exit_code"] = code
     return st
 
 
 # ---- Ollama
-REMOVABLE_OCR = {"zh-Hans-CN", "ru-RU"}  # 영어·한국어는 Windows 가 쓰므로 지우지 않는다
-
-
 def remove_ocr(codes: list[str]) -> dict:
-    """OCR 언어 팩 지우기(중국어·러시아어만) — 관리자 권한 창."""
-    caps = [ocr.PACKS[c] for c in codes if c in REMOVABLE_OCR]
+    """OCR 언어 팩 지우기 — WATT 가 설치한 팩만(원래 있던 팩은 손대지 않는다). 관리자 권한 창."""
+    mine = set(read_list(paths.INSTALLED_OCR))
+    codes = [c for c in codes if c in mine and c in ocr.PACKS]
+    caps = [ocr.PACKS[c] for c in codes]
     if caps:
         cmd = " & ".join(f"dism /Online /Remove-Capability /CapabilityName:{c} /NoRestart" for c in caps)
         code = run_elevated("cmd.exe", f'/c "echo WATT: Windows OCR 언어 팩 지우는 중 & {cmd}"')
     else:
         code = 0
+    after = ocr.installed()
+    for c in codes:
+        if not after.get(c):
+            forget(paths.INSTALLED_OCR, c)
     st = ocr_status()
     st["exit_code"] = code
     return st
@@ -219,6 +228,8 @@ def ollama_uninstall() -> dict:
     if not unins:
         raise RuntimeError("Ollama 제거 프로그램을 찾지 못했습니다. 설정 → 앱에서 지워 주세요")
     subprocess.run([str(unins)], check=False)
+    if not ollama_exe():
+        write_list(paths.INSTALLED_OLLAMA, [])
     return ollama_status()
 
 
@@ -245,8 +256,11 @@ def download(url: str, dest: Path, progress=None, cancel: threading.Event | None
 
 def ollama_install(progress=None, cancel=None) -> dict:
     """공식 설치 파일(ollama.com)을 받아 실행 — 설치 창은 Ollama 것이 뜬다."""
+    had = bool(ollama_exe())
     setup = download(OLLAMA_SETUP_URL, paths.DOWNLOADS / "OllamaSetup.exe", progress, cancel)
     subprocess.run([str(setup)], check=False)  # 사용자 영역 설치(관리자 권한 불필요). 끝나면 Ollama 가 스스로 켜진다
+    if not had and ollama_exe():
+        remember(paths.INSTALLED_OLLAMA, str(Path(ollama_exe()).parent))
     for _ in range(40):
         st = ollama_status()
         if st["running"]:
@@ -271,6 +285,14 @@ def model_pull(name: str, progress=None, cancel: threading.Event | None = None) 
             if progress:
                 progress(ev.get("status", ""), ev.get("completed", 0), ev.get("total", 0))
     return ollama_status()
+
+
+def installed_by_watt() -> dict:
+    """WATT 가 설치한 것(원래 있던 것은 빠진다) — 앱의 지우기 버튼·'설치한 것 정리'·삭제 프로그램이 이것만 다룬다."""
+    return {"models": read_list(paths.INSTALLED_MODELS), "ocr": read_list(paths.INSTALLED_OCR),
+            "addons": [d for d in read_list(paths.INSTALLED_ADDONS)
+                       if (Path(d) / "Interface" / "AddOns" / "ChatFontCJK").exists()],
+            "ollama": bool(read_list(paths.INSTALLED_OLLAMA)) and bool(ollama_exe())}
 
 
 def model_delete(name: str) -> dict:
