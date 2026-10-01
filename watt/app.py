@@ -353,11 +353,11 @@ class Api:
     # ---- 업데이트
     @_logged
     def check_update(self, force: bool = False) -> dict | None:
-        """새 버전 — 켤 때는 설정이 켜져 있을 때만, 6시간에 한 번. force 면 지금."""
+        """새 버전 — 설정이 켜져 있을 때만, 30분에 한 번(켜 둔 동안 화면이 30분마다 묻는다). force 면 지금."""
         if not force:
             if not settings.load()["update_check"]:
                 return None
-            if self._update and time.time() - self._update_t < 6 * 3600:
+            if self._update and time.time() - self._update_t < 1800:  # 30분 — 6시간이면 켜 둔 동안 새 버전을 못 봤다
                 return self._update
         try:
             self._update = update.check()

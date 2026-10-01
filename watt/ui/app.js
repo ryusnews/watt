@@ -736,6 +736,7 @@ function bind() {
   if (setupDone()) call('resume').then((r) => { if (r && r.live) { S.starting = Date.now(); toast('업데이트 전처럼 통역을 이어서 켭니다', 'ok'); refresh(); } }).catch(() => {});
   if (S.view === 'home' && !c.onboarded) setTimeout(() => coach(true), 400);
   checkUpdate(false).catch(() => {});
+  setInterval(() => checkUpdate(false).catch(() => {}), 30 * 60 * 1000);  // 켜 둔 동안에도 새 버전을 알린다(설정 '자동 확인'을 따름)
   setInterval(() => refresh(false).catch(() => {}), 1500);
   setInterval(() => refresh(true).catch(() => {}), 8000);
 })();
