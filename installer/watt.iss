@@ -52,3 +52,69 @@ Name: "{autodesktop}\WATT"; Filename: "{app}\WATT.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\WATT.exe"; Description: "{cm:LaunchProgram,WATT}"; Flags: nowait postinstall skipifsilent
+
+[CustomMessages]
+korean.AskModels=WATT 로 받은 AI 번역 모델도 지울까요?%n(수 GB · Ollama 프로그램은 남습니다)
+korean.AskAddons=게임 폴더의 글꼴 애드온(ChatFontCJK)도 지울까요?
+korean.AskData=WATT 설정과 기록(채팅 기록 포함)도 지울까요?
+english.AskModels=Also remove the AI translation models WATT downloaded?%n(several GB; Ollama itself stays)
+english.AskAddons=Also remove the ChatFontCJK font addon from your game folder?
+english.AskData=Also remove WATT settings and logs (including chat logs)?
+
+[Code]
+{ 삭제할 때 WATT 가 넣은 것만 물어보고 지운다. 조용히 삭제(/SILENT)하면 기본값 '아니오' — 아무것도 지우지 않는다 }
+function DataDir: String;
+begin
+  Result := ExpandConstant('{localappdata}\WATT');
+end;
+
+function ReadList(const Name: String; var Lines: TArrayOfString): Boolean;
+begin
+  Result := LoadStringsFromFile(DataDir + '\' + Name, Lines) and (GetArrayLength(Lines) > 0);
+end;
+
+function OllamaExe: String;
+begin
+  Result := ExpandConstant('{localappdata}\Programs\Ollama\ollama.exe');
+  if not FileExists(Result) then
+    Result := ExpandConstant('{commonpf}\Ollama\ollama.exe');
+end;
+
+procedure RemoveModels(const Lines: TArrayOfString);
+var
+  I, Code: Integer;
+begin
+  if not FileExists(OllamaExe) then Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if Trim(Lines[I]) <> '' then
+      Exec(OllamaExe, 'rm ' + Trim(Lines[I]), '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+procedure RemoveAddons(const Lines: TArrayOfString);
+var
+  I: Integer;
+  D: String;
+begin
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if Trim(Lines[I]) <> '' then
+    begin
+      D := Trim(Lines[I]) + '\Interface\AddOns\ChatFontCJK';
+      if DirExists(D) then DelTree(D, True, True, True);
+    end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Lines: TArrayOfString;
+begin
+  if CurUninstallStep <> usUninstall then Exit;
+  if ReadList('installed_models.txt', Lines) then
+    if SuppressibleMsgBox(CustomMessage('AskModels'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      RemoveModels(Lines);
+  if ReadList('installed_addons.txt', Lines) then
+    if SuppressibleMsgBox(CustomMessage('AskAddons'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      RemoveAddons(Lines);
+  if DirExists(DataDir) then
+    if SuppressibleMsgBox(CustomMessage('AskData'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      DelTree(DataDir, True, True, True);
+end;

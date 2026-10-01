@@ -25,6 +25,9 @@ INPUT_UI = DATA / "input_ui.json"   # 입력창 위치(입력창 프로세스가
 LIVE_STATUS = DATA / "live_status.json"  # 통역 창이 2초마다 쓰는 상태 — 런처 대시보드용
 LIVE_CMD = DATA / "live_cmd.json"        # 런처 → 통역 창 명령(다시 찾기·위치 초기화)
 DOWNLOADS = DATA / "downloads"
+# WATT 가 직접 넣은 것 — 삭제 프로그램이 읽어 이것만 지운다(installer/watt.iss). 한 줄에 하나
+INSTALLED_ADDONS = DATA / "installed_addons.txt"   # 애드온을 넣은 게임 폴더
+INSTALLED_MODELS = DATA / "installed_models.txt"   # WATT 로 받은 Ollama 모델
 
 
 def ensure() -> None:

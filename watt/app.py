@@ -121,6 +121,7 @@ class Api:
         return {
             "app": {"name": APP_NAME, "full": APP_FULL, "version": VERSION, "data": str(paths.DATA)},
             "settings": cfg, "system": self._sys, "ocr": oc, "ollama": ol,
+            "removable_ocr": sorted(system.REMOVABLE_OCR),
             "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]),
                         "recommended": m["name"] == system.recommend_model(vram)} for m in system.MODELS],
             "game": game and {"exe": game["exe"], "flavor": game["flavor"], "w": game["w"], "h": game["h"]},
@@ -257,10 +258,34 @@ class Api:
                 last[:] = [now, done, now]
                 self._emit(type="progress", task="pull", model=name, status=status, done=done, total=total,
                            speed=speed)
+            had = any(m["name"] == name for m in system.ollama_status()["models"])
             st = system.model_pull(name, prog, cancel)
+            if not had:  # 원래 있던 모델은 삭제할 때 건드리지 않는다
+                system.remember(paths.INSTALLED_MODELS, name)
             settings.save({"model": name})
             return st
         return self._task("pull", work)
+
+    @_logged
+    def delete_model(self, name: str) -> dict:
+        if name in self._busy:
+            raise RuntimeError("받는 중인 모델은 지울 수 없습니다")
+        return system.model_delete(name)
+
+    @_logged
+    def remove_addon(self, flavor_dir: str) -> dict:
+        res = system.remove_addon(flavor_dir)
+        self._game_list(force=True)
+        return res
+
+    @_logged
+    def remove_ocr(self, code: str) -> dict:
+        return self._task("ocr", lambda c: system.remove_ocr([code]))
+
+    @_logged
+    def uninstall_ollama(self) -> dict:
+        self.stop_all()  # 통역 창·입력창이 Ollama 를 쓰고 있다
+        return self._task("ollama", lambda c: system.ollama_uninstall())
 
     @_logged
     def use_model(self, name: str) -> dict:

@@ -192,7 +192,9 @@ const DETAIL = {
   },
   ocr() {
     const langs = S.state.ocr.langs, miss = S.state.ocr.missing, run = S.progress.ocr || S.state.busy.includes('ocr');
-    const chips = langs.map((l) => `<span class="chip ${l.installed ? 'ok' : 'bad'}">${icon(l.installed ? 'i-check' : 'i-ocr')}${esc(l.label)}</span>`).join('');
+    const removable = S.state.removable_ocr || [];
+    const chips = langs.map((l) => `<span class="chip ${l.installed ? 'ok' : 'bad'}">${icon(l.installed ? 'i-check' : 'i-ocr')}${esc(l.label)}${
+      l.installed && removable.includes(l.code) && !run ? `<button class="chip-x" data-act="remove_ocr" data-code="${esc(l.code)}" data-label="${esc(l.label)}" aria-label="${esc(l.label)} 언어 팩 지우기" data-tip="언어 팩 지우기">${icon('i-x')}</button>` : ''}</span>`).join('');
     const action = miss.length ? `<button class="btn primary" data-act="install_ocr" ${run ? 'disabled' : ''} data-tip="Windows 권한 확인 창이 뜹니다">${icon('i-shield', 'sm')}${run ? '설치 중' : '설치'}</button>` : '';
     return [`<div class="chips">${chips}</div>${run ? '<div class="progress indet"><i></i></div>' : ''}`, action];
   },
@@ -205,8 +207,9 @@ const DETAIL = {
     let prog = '';
     if (run) prog = p && p.total ? `<div class="box"><div class="head"><span class="grow mono muted">OllamaSetup.exe</span><span class="pct">${pct(p)}%</span></div>
       <div class="progress"><i style="width:${pct(p)}%"></i></div></div>` : '<div class="progress indet"><i></i></div>';
+    const remove = o.installed && !run ? `<button class="btn ghost-danger" data-act="uninstall_ollama" data-tip="Ollama 제거 프로그램을 엽니다">제거</button>` : '';
     const action = !o.installed ? `<button class="btn primary" data-act="install_ollama" ${run ? 'disabled' : ''}>${icon('i-download', 'sm')}설치</button>`
-      : !o.running ? `<button class="btn primary" data-act="start_ollama" ${run ? 'disabled' : ''}>${icon('i-power', 'sm')}켜기</button>` : '';
+      : `<span class="inline">${remove}${!o.running ? `<button class="btn primary" data-act="start_ollama" ${run ? 'disabled' : ''}>${icon('i-power', 'sm')}켜기</button>` : ''}</span>`;
     return [chips + prog, action];
   },
   model() {
@@ -214,10 +217,12 @@ const DETAIL = {
     const cards = st.models.map((m) => {
       const tags = [m.recommended ? '<span class="badge bronze">추천</span>' : '', m.installed ? '<span class="badge ok">받음</span>' : '',
         !m.verified ? '<span class="badge">검증 전</span>' : ''].join('');
-      return `<button class="model ${m.name === sel ? 'sel' : ''}" data-model="${esc(m.name)}">
+      const busy = (p || st.busy.includes('pull'));
+      const trash = m.installed && !busy ? `<button class="trash" data-act="delete_model" data-name="${esc(m.name)}" data-label="${esc(m.label)}" data-size="${m.download_gb}" aria-label="${esc(m.label)} 지우기" data-tip="모델 지우기">${icon('i-trash', 'sm')}</button>` : '';
+      return `<div class="model ${m.name === sel ? 'sel' : ''}" role="radio" tabindex="0" aria-checked="${m.name === sel}" data-model="${esc(m.name)}">
         <span class="n">${esc(m.label)}<span class="radio"></span></span>
         <span class="m"><span>${m.download_gb}GB</span><span>VRAM ${Math.round(m.vram_gb)}GB</span></span>
-        <span class="tags">${tags}</span></button>`;
+        <span class="tags">${tags}${trash}</span></div>`;
     }).join('');
     let box = '';
     if (p || st.busy.includes('pull')) {
@@ -239,9 +244,10 @@ const DETAIL = {
   addon() {
     const games = S.games || [];
     if (!S.selGame || !games.some((g) => g.dir === S.selGame)) S.selGame = defaultGame(games);
-    const list = games.length ? games.map((g) => `<button class="game ${g.dir === S.selGame ? 'sel' : ''} ${g.supported ? '' : 'off'}" data-game="${esc(g.dir)}">
+    const list = games.length ? games.map((g) => `<div class="game ${g.dir === S.selGame ? 'sel' : ''} ${g.supported ? '' : 'off'}" role="radio" tabindex="0" aria-checked="${g.dir === S.selGame}" data-game="${esc(g.dir)}">
         <span class="radio"></span><span><b>${esc(g.label)}</b>${g.running ? ' <span class="badge ok">실행 중</span>' : ''}<span class="p">${esc(g.dir)}</span></span>
-        ${g.addon ? `<span class="badge ok">애드온 ${esc(g.addon)}</span>` : g.supported ? '<span class="badge">애드온 없음</span>' : '<span class="badge">지원 안 함</span>'}</button>`).join('')
+        ${g.addon ? `<span class="badge ok">애드온 ${esc(g.addon)}</span>` : g.supported ? '<span class="badge">애드온 없음</span>' : '<span class="badge">지원 안 함</span>'}
+        ${g.addon ? `<button class="trash" data-act="remove_addon" data-dir="${esc(g.dir)}" data-label="${esc(g.label)}" aria-label="애드온 지우기" data-tip="글꼴 애드온 지우기">${icon('i-trash', 'sm')}</button>` : '<span></span>'}</div>`).join('')
       : `<div class="games-empty">${icon('i-folder', 'xl thin')}<span>게임 폴더를 찾지 못했습니다</span>
           <button class="btn primary" data-act="pick_folder">${icon('i-folder', 'sm')}폴더 선택</button></div>`;
     const g = games.find((x) => x.dir === S.selGame);
@@ -278,8 +284,24 @@ const DETAIL = {
   },
 };
 
-async function act(name) {
+async function act(name, d = {}) {
   const st = S.state;
+  if (name === 'delete_model') {
+    if (!(await confirmBox(`${d.label} 지우기`, `${d.size}GB 를 비웁니다. 다시 쓰려면 다시 받아야 합니다`))) return;
+    await call('delete_model', d.name); toast('모델을 지웠습니다', 'ok'); return refresh(true);
+  }
+  if (name === 'remove_addon') {
+    if (!(await confirmBox('글꼴 애드온 지우기', `${d.label} · 게임을 다시 켜면 적용됩니다`))) return;
+    await call('remove_addon', d.dir); toast('글꼴 애드온을 지웠습니다', 'ok'); return loadGames().then(() => refresh(true));
+  }
+  if (name === 'remove_ocr') {
+    if (!(await confirmBox(`${d.label} 언어 팩 지우기`, 'Windows 권한 확인 창이 뜹니다'))) return;
+    return call('remove_ocr', d.code);
+  }
+  if (name === 'uninstall_ollama') {
+    if (!(await confirmBox('Ollama 제거', '통역이 꺼지고 Ollama 제거 프로그램이 열립니다. 받은 모델 파일은 남습니다', '제거'))) return;
+    return call('uninstall_ollama');
+  }
   if (name === 'install_ocr') return call('install_ocr', null);
   if (name === 'install_ollama') return call('install_ollama');
   if (name === 'start_ollama') return call('start_ollama');
@@ -364,6 +386,18 @@ function coach(start = true) {
 }
 function coachEnd() { $('#coach').hidden = true; if (S.state && !S.state.settings.onboarded) save({ onboarded: true }, true); }
 
+/* ---------- 확인 창 ---------- */
+function confirmBox(title, text = '', yes = '지우기') {
+  return new Promise((resolve) => {
+    $('#confirm-title').textContent = title; $('#confirm-text').textContent = text; $('#confirm-yes').textContent = yes;
+    $('#confirm').hidden = false; $('#confirm-no').focus();
+    const done = (v) => { $('#confirm').hidden = true; $('#confirm-yes').onclick = $('#confirm-no').onclick = null; resolve(v); };
+    $('#confirm-yes').onclick = () => done(true);
+    $('#confirm-no').onclick = () => done(false);
+  });
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#confirm').hidden) $('#confirm-no').click(); });
+
 /* ---------- 툴팁 · 알림 ---------- */
 let tipTimer = null;
 document.addEventListener('mouseover', (e) => {
@@ -414,8 +448,12 @@ function bind() {
     if (S.step < STEPS.length - 1) { S.step++; renderSetup(); return; }
     show('home'); if (!S.state.settings.onboarded) setTimeout(() => coach(true), 250);
   };
+  $('#view-setup').addEventListener('keydown', (e) => {
+    const r = e.target.closest('[data-model],[data-game]');
+    if (r && e.target === r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); r.click(); }
+  });
   $('#view-setup').addEventListener('click', (e) => {
-    const a = e.target.closest('[data-act]'); if (a) return act(a.dataset.act);
+    const a = e.target.closest('[data-act]'); if (a) return act(a.dataset.act, a.dataset);
     const m = e.target.closest('[data-model]'); if (m) { S.selModel = m.dataset.model; renderSetup(); return; }
     const g = e.target.closest('[data-game]'); if (g) { S.selGame = g.dataset.game; renderSetup(); save({ game_dir: g.dataset.game }, true); }
   });
@@ -490,7 +528,7 @@ function mockApi() {
       { name: 'gemma4:e2b', label: 'Gemma 4 E2B', download_gb: 4.6, vram_gb: 5, verified: false, installed: false, recommended: false }],
     game: { exe: 'WowB.exe', flavor: '클래식 베타', w: 2560, h: 1440 }, region: { w: 688, h: 325, line_h: 20, lines: 6 },
     steps: { system: 'done', ocr: 'done', ollama: 'done', model: 'done', addon: 'done', region: 'done', test: 'done' },
-    running, busy: [],
+    running, busy: [], removable_ocr: ['zh-Hans-CN', 'ru-RU'],
   });
   const ok = (v) => Promise.resolve(v);
   return {
@@ -504,7 +542,8 @@ function mockApi() {
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
     refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
-    pull_model: () => ok({ started: true }), cancel: () => ok(true), use_model: (n) => ok(Object.assign(settings, { model: n })),
+    pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
+    remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
   };

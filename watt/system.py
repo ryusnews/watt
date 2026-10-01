@@ -144,6 +144,22 @@ def install_ocr(codes: list[str]) -> dict:
 
 
 # ---- Ollama
+REMOVABLE_OCR = {"zh-Hans-CN", "ru-RU"}  # 영어·한국어는 Windows 가 쓰므로 지우지 않는다
+
+
+def remove_ocr(codes: list[str]) -> dict:
+    """OCR 언어 팩 지우기(중국어·러시아어만) — 관리자 권한 창."""
+    caps = [ocr.PACKS[c] for c in codes if c in REMOVABLE_OCR]
+    if caps:
+        cmd = " & ".join(f"dism /Online /Remove-Capability /CapabilityName:{c} /NoRestart" for c in caps)
+        code = run_elevated("cmd.exe", f'/c "echo WATT: Windows OCR 언어 팩 지우는 중 & {cmd}"')
+    else:
+        code = 0
+    st = ocr_status()
+    st["exit_code"] = code
+    return st
+
+
 def ollama_exe() -> str | None:
     cands = [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
              Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Ollama" / "ollama.exe"]
@@ -191,6 +207,18 @@ def ollama_start() -> dict:
         st = ollama_status()
         if st["running"]:
             return st
+    return ollama_status()
+
+
+def ollama_uninstall() -> dict:
+    """Ollama 자체 제거 프로그램을 연다(받은 모델 폴더는 Ollama 가 남긴다)."""
+    exe = ollama_exe()
+    if not exe:
+        return ollama_status()
+    unins = next(iter(sorted(Path(exe).parent.glob("unins*.exe"))), None)
+    if not unins:
+        raise RuntimeError("Ollama 제거 프로그램을 찾지 못했습니다. 설정 → 앱에서 지워 주세요")
+    subprocess.run([str(unins)], check=False)
     return ollama_status()
 
 
@@ -242,6 +270,15 @@ def model_pull(name: str, progress=None, cancel: threading.Event | None = None) 
                 raise RuntimeError(ev["error"])
             if progress:
                 progress(ev.get("status", ""), ev.get("completed", 0), ev.get("total", 0))
+    return ollama_status()
+
+
+def model_delete(name: str) -> dict:
+    """Ollama 모델 지우기."""
+    req = urllib.request.Request(OLLAMA_URL + "/api/delete", data=json.dumps({"model": name}).encode(),
+                                 headers={"Content-Type": "application/json"}, method="DELETE")
+    urllib.request.urlopen(req, timeout=60).read()
+    forget(paths.INSTALLED_MODELS, name)
     return ollama_status()
 
 
@@ -367,9 +404,43 @@ def game_installs(extra_roots: list[str] | None = None) -> list[dict]:
     return out
 
 
+def remember(listfile: Path, item: str) -> None:
+    """삭제할 때 지울 수 있게 WATT 가 넣은 것을 적어 둔다(한 줄에 하나). 삭제 프로그램(Inno)은 BOM 이 없으면
+    ANSI 로 읽어 한글 경로가 깨지므로 UTF-8 BOM 으로 쓴다."""
+    lines = read_list(listfile)
+    if item.lower() not in (x.lower() for x in lines):
+        write_list(listfile, lines + [item])
+
+
+def forget(listfile: Path, item: str) -> None:
+    write_list(listfile, [x for x in read_list(listfile) if x.lower() != item.lower()])
+
+
+def read_list(listfile: Path) -> list[str]:
+    try:
+        return [x.strip() for x in listfile.read_text(encoding="utf-8-sig").splitlines() if x.strip()]
+    except OSError:
+        return []
+
+
+def write_list(listfile: Path, lines: list[str]) -> None:
+    paths.ensure()
+    listfile.write_text("".join(x + "\r\n" for x in lines), encoding="utf-8-sig", newline="")
+
+
+def remove_addon(flavor_dir: str) -> dict:
+    """게임 폴더에서 ChatFontCJK 만 지운다."""
+    dst = Path(flavor_dir) / "Interface" / "AddOns" / "ChatFontCJK"
+    if dst.is_dir():
+        shutil.rmtree(dst)
+    forget(paths.INSTALLED_ADDONS, str(Path(flavor_dir)))
+    return {"dir": str(dst), "removed": not dst.exists()}
+
+
 def install_addon(flavor_dir: str) -> dict:
     """ChatFontCJK(중국어·러시아어가 □ 없이 보이게 하는 글꼴 애드온)를 AddOns 에 복사. 게임을 완전히 재시작해야 적용."""
     dst = Path(flavor_dir) / "Interface" / "AddOns" / "ChatFontCJK"
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(paths.ADDON, dst, dirs_exist_ok=True)
+    remember(paths.INSTALLED_ADDONS, str(Path(flavor_dir)))
     return {"dir": str(dst), "version": addon_version(Path(flavor_dir))}

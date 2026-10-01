@@ -11,6 +11,8 @@ python tools/build.py --no-installer
 | 설치 프로그램(약 31MB) | `dist/installer/WATT-Setup-<버전>.exe` |
 
 - 버전은 `watt/__init__.py` 의 `VERSION` 하나만 바꾼다(exe 버전 정보·설치 프로그램 이름이 따라간다).
+- 버전 규칙 `0.1.N`: 안건(추가·수정·변경·삭제) 하나 = GitHub 이슈 하나 = N+1 = 릴리스 하나.
+  이슈 열기 → 고치기 → 커밋 메시지에 `Closes #번호` → VERSION·CHANGELOG → `python tools/build.py` → 릴리스 `v0.1.N` 에 설치 파일.
 - 필요한 것: Python 3.12 + `pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Globalization winrt-Windows.Storage.Streams winrt-Windows.Foundation winrt-Windows.Foundation.Collections`, Inno Setup 6(내 계정 설치: `%LOCALAPPDATA%\Programs\Inno Setup 6`).
 - `selftest` 는 exe 안에 모듈·데이터·OCR·글꼴·WebView2·API 가 다 들어갔는지 창을 띄우지 않고 확인한다(`WATT.exe --role selftest` → `logs/selftest.json`).
 

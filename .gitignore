@@ -7,6 +7,7 @@ live_ui.json
 live_status.json
 live_cmd.json
 input_ui.json
+installed_*.txt
 translator/live_config.json
 translator/outgoing_config.json
 

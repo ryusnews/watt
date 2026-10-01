@@ -35,6 +35,16 @@ AI 실행기(Ollama), 번역 모델, 글자 인식 언어 팩은 앱의 **환경
 - **화면만 읽음** — 채팅창을 캡처해 글자를 읽을 뿐, 게임 파일·메모리를 건드리지 않습니다.
 - **자동 입력 없음** — 번역문은 클립보드에 두거나 입력칸에 넣기까지만 합니다. 보내기는 직접.
 
+## 삭제
+앱의 **환경 설정**에서 하나씩 지울 수 있습니다 — 모델·글꼴 애드온은 휴지통, OCR 언어 팩(중국어·러시아어)은 ×, Ollama 는 "제거".
+
+WATT 자체는 "설정 → 앱"에서 제거합니다. 제거할 때 하나씩 묻습니다.
+- WATT 로 받은 AI 모델 · 게임 폴더의 글꼴 애드온 · WATT 설정과 기록(채팅 기록 포함)
+
+Ollama 와 Windows OCR 언어 팩은 다른 프로그램도 쓰므로 남깁니다. 필요 없으면 직접 지우세요.
+- Ollama: 설정 → 앱 → Ollama 제거 (받은 모델은 `ollama rm <이름>` 또는 `%USERPROFILE%\.ollama\models`)
+- OCR 언어 팩: 설정 → 시간 및 언어 → 언어 및 지역
+
 ## 개발
 ```
 pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging ^
@@ -51,6 +61,8 @@ python tools/build.py         # WATT.exe + 설치 프로그램
 | `addon/ChatFontCJK/` | 중국어·러시아어 채팅이 □로 깨지지 않게 하는 게임 글꼴 애드온 |
 | `eval/` | 번역 평가 세트 |
 | `tools/` | 빌드, 아이콘, 기록 분석 |
+
+버전은 `0.1.N` — 안건(추가·수정·변경·삭제) 하나마다 N 을 올리고, [이슈](../../issues)와 [릴리스](../../releases)로 남깁니다.
 
 자세한 빌드 방법: [docs/build.md](docs/build.md) · 용어 사전 고치기: [docs/setup-guide.md](docs/setup-guide.md#용어-사전)
 

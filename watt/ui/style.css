@@ -78,6 +78,21 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .btn.sm { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
 .btn.xl { width: 200px; height: 50px; border-radius: 14px; font-size: 15.5px; box-shadow: 0 12px 30px rgba(16,100,130,.35); }
 .btn[disabled] { opacity: .45; pointer-events: none; }
+.btn.danger { background: rgba(233,114,114,.14); color: var(--err); }
+.btn.danger:hover { background: rgba(233,114,114,.24); }
+.btn.ghost-danger { background: transparent; color: var(--muted); }
+.btn.ghost-danger:hover { background: rgba(233,114,114,.12); color: var(--err); }
+.trash { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--faint); display: grid; place-items: center; flex: none; transition: background var(--t), color var(--t); }
+.trash:hover { background: rgba(233,114,114,.14); color: var(--err); }
+.chip-x { width: 20px; height: 20px; margin: -2px -6px -2px 2px; border: 0; border-radius: 6px; background: transparent; color: var(--faint); display: grid; place-items: center; }
+.chip-x:hover { background: rgba(233,114,114,.14); color: var(--err); }
+.chip-x .ic { width: 12px; height: 12px; }
+.modal { position: fixed; inset: 0; z-index: 45; background: rgba(5,7,10,.6); display: grid; place-items: center; animation: fade .15s ease; }
+.modal-card { width: 340px; padding: 20px 22px 16px; border-radius: 16px; background: var(--ctrl); box-shadow: var(--shadow); }
+.modal-card b { display: block; font-size: 16px; font-weight: 600; }
+.modal-card p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.modal-card p:empty { display: none; }
+.modal-foot { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .icon-btn.sq { width: 34px; height: 34px; border-radius: 10px; background: var(--ctrl); color: var(--fg2); }
 .icon-btn.sq:hover { background: var(--ctrl-hi); }
 .icon-btn.lg { width: 44px; height: 44px; border-radius: 12px; background: var(--panel); color: var(--fg2); }
@@ -194,20 +209,21 @@ kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; backgr
 .chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; border-radius: 10px; background: var(--panel); font-size: 13px; color: var(--fg2); }
 .chip.ok .ic { color: var(--ok); } .chip.bad { color: var(--warn); } .chip.bad .ic { color: var(--warn); }
 .models { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.model { text-align: left; padding: 16px; border: 0; border-radius: 14px; background: var(--panel); display: flex; flex-direction: column; gap: 10px; transition: box-shadow var(--t), background var(--t); }
+.model { cursor: pointer; text-align: left; padding: 16px; border: 0; border-radius: 14px; background: var(--panel); display: flex; flex-direction: column; gap: 10px; transition: box-shadow var(--t), background var(--t); }
 .model:hover { background: #161C26; }
 .model.sel { background: #161C26; box-shadow: 0 0 0 1.5px var(--teal); }
 .model .n { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 15px; }
 .model .radio { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #3A4454; }
 .model.sel .radio { border: 5px solid var(--teal); }
 .model .m { display: flex; gap: 14px; font: 500 12px var(--mono); color: var(--muted); }
-.model .tags { display: flex; gap: 6px; }
+.model .tags { display: flex; gap: 6px; align-items: center; min-height: 30px; }
+.model .tags .trash { margin-left: auto; }
 .box { padding: 18px 20px; border-radius: 14px; background: var(--panel); box-shadow: var(--lift); display: flex; flex-direction: column; gap: 12px; }
 .box .head { display: flex; align-items: center; gap: 14px; }
 .box .pct { font: 600 22px var(--mono); color: var(--teal); }
 .box .sub { display: flex; justify-content: space-between; font: 500 12px var(--mono); color: var(--faint); }
 .games { display: flex; flex-direction: column; gap: 8px; }
-.game { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 0; border-radius: 12px;
+.game { cursor: pointer; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 12px 14px; border: 0; border-radius: 12px;
   background: var(--panel); text-align: left; transition: box-shadow var(--t); }
 .game.sel { box-shadow: 0 0 0 1.5px var(--teal); background: #161C26; }
 .game .radio { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #3A4454; }
