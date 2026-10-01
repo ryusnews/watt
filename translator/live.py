@@ -82,7 +82,19 @@ def english_garbled(text: str) -> bool:
 # [채널] [이름]: 본문 — 채널 번호가 빠지거나(OCR) 괄호 없이 읽혀도(2 [이름]:) 새 메시지로 본다.
 # 채널을 못 읽은 줄을 줄바꿈으로 오인해 여러 메시지가 한데 붙던 문제(2026-09-30 분석)
 # 이름 뒤 콜론을 마침표·쉼표로 읽는 경우도 받는다([6] [Skiddo Prime]. LF3M BFD)
-HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*([^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]\s*[:：.,;]\s*(.*)$")
+# 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
+# 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
+HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]"
+                    r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
+
+
+def _channel(m: re.Match) -> str | None:
+    """채널 번호, 없으면 외침·귓말."""
+    kind = m.group("kind") or ""
+    return m.group("ch") or ("외침" if "외침" in kind or kind == "yells" else
+                             "귓말" if "귓속말" in kind or kind == "whispers" else None)
+
+
 BRACKET = re.compile(r"\[[^\[\]]{2,60}\]")
 
 
@@ -153,7 +165,7 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
                "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
         if not HEADER.match(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
             row["alt_header"] = next((c["t"] for c in (e, r, z, k) if c and HEADER.match(c["t"])
-                                      and HEADER.match(c["t"]).group(1)), None)
+                                      and _channel(HEADER.match(c["t"]))), None)
         out.append(row)
     return out
 
@@ -167,20 +179,23 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     margin = min((r["x"] for r in rows), default=0)
     for r in rows:
         m = HEADER.match(r["text"])
-        body = m.group(3) if m else None
+        body = m.group("body") if m else None
         if not m and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 콜론 뒤)으로
             m = HEADER.match(r["alt_header"])
             colon = re.search(r"[:：]", r["text"][:48])
-            body = r["text"][colon.end():] if colon else m.group(3)
+            body = r["text"][colon.end():] if colon else m.group("body")
         if m:
-            ch = m.group(1)
-            if not ch:  # 고른 엔진이 [6] 을 빠뜨렸으면 다른 엔진이 읽은 채널 번호로
+            ch = m.group("ch")
+            if not ch:  # 고른 엔진이 [6] 을 빠뜨렸으면 다른 엔진이 읽은 채널 번호로(외침·귓말은 한국어 엔진이 잘 읽는다)
                 for c in r["cand"].values():
                     h = HEADER.match(c or "")
-                    if h and h.group(1):
-                        ch = h.group(1)
+                    if h and h.group("ch"):
+                        ch = h.group("ch")
                         break
-            cur = {"ch": ch or "?", "name": m.group(2).strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
+                else:
+                    ch = next((_channel(h) for c in r["cand"].values() if (h := HEADER.match(c or "")) and _channel(h)),
+                              None)
+            cur = {"ch": ch or "?", "name": m.group("name").strip(), "body": body.strip(), "lang": r["lang"], "y": r["y"],
                    "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
@@ -222,7 +237,7 @@ def settle_language(m: dict) -> None:
                 text = CJK_GAP.sub("", text)
             if i == 0:
                 h = HEADER.match(text)
-                text = h.group(3) if h else text
+                text = h.group("body") if h else text
             parts.append(text.strip())
         m["body"] = ("" if lang == "zh" else " ").join(p for p in parts if p)
 
