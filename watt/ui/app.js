@@ -160,7 +160,7 @@ function renderFeed() {
   const items = (S.live.feed || []).filter((f) => S.feedLang === 'all' || f.lang === S.feedLang);
   const showOrig = true;
   setHTML($('#feed'), items.map((f) => `
-    <article class="item"><span class="code ${esc(f.lang)}">${esc((f.lang || '').toUpperCase())}</span>
+    <article class="item"><span class="code ${esc(f.tag || f.lang)} ${f.tag && !['es', 'de', 'fr', 'pt', 'uk'].includes(f.tag) ? 'other' : ''}">${esc((f.tag || f.lang || '').toUpperCase())}</span>
       <div>${f.kind === 'ad' && !f.ko ? '<div class="ko ad">광고</div>' : `<div class="ko">${esc(f.ko)}</div>`}${showOrig ? `<div class="orig"><b>${esc(f.name)}</b>${esc(f.body)}</div>` : ''}</div>
       <span class="time">${esc((f.t || '').slice(11, 16))}</span></article>`).join(''));
   $('#feed-empty').hidden = items.length > 0;

@@ -681,7 +681,8 @@ class Overlay:
             if n:
                 self.text.insert("end", "\n")
             lang = it["lang"] if it["lang"] in tks.LANG else "en"
-            self.text.insert("end", lang.upper(), "lang_" + lang)
+            tag = it.get("tag") or lang  # 원문 언어(ES · DE …) — 색은 그 언어 것, 없으면 문자 종류 것
+            self.text.insert("end", tag.upper(), "lang_" + (tag if tag in tks.LANG else lang))
             if it.get("kind") == "ad" and not it.get("ko"):  # 접은 광고 — 한 줄
                 self.text.insert("end", f"  {it['name']}  ", "meta")
                 self.text.insert("end", "광고", "ad")
@@ -1010,30 +1011,43 @@ class Live:
             if m.get("pass"):
                 m["ko"], sec, cached = m["body"], 0.0, True
             elif body_key in self.cache:
-                m["ko"], sec, cached = self.cache[body_key], 0.0, True
+                (m["ko"], src), sec, cached = self.cache[body_key], 0.0, True
+                m["tag"] = self.src_tag(m, src)
             else:
+                src = ""
                 try:
-                    m["ko"], sec = incoming.translate(m["body"], chinese=m["lang"] == "zh" or bool(CJK.search(m["name"])))
+                    m["ko"], sec, src = incoming.translate_src(m["body"], chinese=m["lang"] == "zh" or bool(CJK.search(m["name"])))
                 except Exception as e:
                     m["ko"], sec, error = f"(번역 실패: {type(e).__name__})", 0.0, f"{type(e).__name__}: {e}"
                 if not error:
-                    self.cache[body_key] = m["ko"]
+                    self.cache[body_key] = (m["ko"], src)
+                m["tag"] = self.src_tag(m, src)
                 cached = False
                 self.stats["translated"] += 1
                 self.stats["tr_s"] = sec
             m["wait_s"] = round(time.monotonic() - t0, 2)
-            self.trace.write("tr", id=m.get("id"), lang=m["lang"], body=m["body"], ko=m["ko"], cached=cached,
+            self.trace.write("tr", id=m.get("id"), lang=m["lang"], tag=m.get("tag"), body=m["body"], ko=m["ko"], cached=cached,
                              queue_s=round(queue_wait, 2), llm_s=round(sec, 2), total_s=round(queue_wait + m["wait_s"], 2),
                              backlog=self.jobs.qsize(), error=error)
             self.log_item(m, m["ko"], round(sec, 2), cached)
             self.events.put(("update", m))
 
     @staticmethod
+    def src_tag(m: dict, src: str) -> str | None:
+        """화면에 붙일 원문 언어 — 라틴 문자 글은 모델이 본 언어(ES · DE · FR …), 키릴은 우크라이나어(UK)만 따로.
+        짧은 글(글자 8개 미만)은 모델이 헷갈리므로(lol · ok) 붙이지 않는다."""
+        if src not in incoming.SRC_TAGS or _letters(m["body"]) < 8:
+            return None
+        if m["lang"] == "en" and src != "uk" or m["lang"] == "ru" and src == "uk":
+            return src
+        return None
+
+    @staticmethod
     def log_item(m: dict, ko: str, sec: float = 0.0, cached: bool = False) -> None:
         """런처 피드가 읽는 번역 기록."""
         with LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ch": m["ch"], "name": m["name"], "lang": m["lang"],
-                                "body": m["body"], "ko": ko, "sec": sec, "cached": cached, "kind": m.get("kind")},
+                                "tag": m.get("tag"), "body": m["body"], "ko": ko, "sec": sec, "cached": cached, "kind": m.get("kind")},
                                ensure_ascii=False) + "\n")
 
     def poll(self):

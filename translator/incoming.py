@@ -12,7 +12,9 @@ from .llm import chat_json
 
 HERE = Path(__file__).resolve().parent
 MODEL = "gemma4:12b"
-SCHEMA = {"type": "object", "properties": {"ko": {"type": "string"}}, "required": ["ko"]}
+SCHEMA = {"type": "object", "properties": {"ko": {"type": "string"}, "src": {"type": "string"}}, "required": ["ko", "src"]}
+# 라틴 · 키릴 문자로 쓰는 언어 중 원문 표시를 따로 붙일 것 — 화면의 EN 대신 ES · DE · FR … (#76)
+SRC_TAGS = {"es", "de", "fr", "pt", "it", "nl", "pl", "tr", "sv", "da", "no", "fi", "cs", "ro", "hu", "uk", "bg", "sr"}
 
 
 BASE = ("You translate one World of Warcraft Classic chat message into natural Korean for a Korean player. "
@@ -20,7 +22,8 @@ BASE = ("You translate one World of Warcraft Classic chat message into natural K
         "summ = 소환). Use the official Korean client names for dungeons, zones and classes. "
         "Prices 20s / 5g / 50c = 20실버, 5골드, 50코퍼. "
         "Never add words or requests that are not in the message; if parts are unreadable OCR noise, translate only the "
-        "readable parts. Keep player names, numbers and [bracketed] text as units. Put only the translation in 'ko'.")
+        "readable parts. Keep player names, numbers and [bracketed] text as units. Put only the translation in 'ko'. "
+        "Put the language the message is written in as an ISO 639-1 code in 'src' (en, es, de, fr, pt, ru, uk, zh, ...).")
 # 글에 [ 가 있을 때만 — 늘 넣으면 링크가 없는 글의 용어(血色)까지 괄호를 씌우고 사전 용어를 놓쳤다(2026-10-01)
 LINK_RULES = ("[Bracketed text] is an item, quest or NPC link in the writer's client language: translate each one as a single "
               "[bracketed] unit in place — the official Korean client name if you know it, otherwise a plain transliteration "
@@ -117,6 +120,12 @@ def fix_terms(out: str, hints: dict) -> str:
 
 
 def translate(text: str, model: str | None = None, chinese: bool = False) -> tuple[str, float]:
+    ko, secs, _ = translate_src(text, model, chinese)
+    return ko, secs
+
+
+def translate_src(text: str, model: str | None = None, chinese: bool = False) -> tuple[str, float, str]:
+    """(번역, 걸린 초, 원문 언어 코드) — 원문 언어는 모델이 본 것(소문자 두 글자, 모르면 '')."""
     """model 을 안 주면 지금의 MODEL(통역 창이 설정에서 바꾼다) — 기본값에 MODEL 을 박으면 처음 값(12b)에 묶였다(2026-10-01).
     chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
     한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
@@ -125,7 +134,8 @@ def translate(text: str, model: str | None = None, chinese: bool = False) -> tup
     if TIMEZONE.search(text):  # 시간대로 쓴 pst · pm 은 '귓속말 주세요' 가 아니다
         terms = {k: v for k, v in terms.items() if k.lower() not in ("pst", "pm")}
     out, secs = chat_json(model or MODEL, system_prompt(terms, text, chinese), text, SCHEMA)
-    return fix_terms(out.get("ko", "").strip(), terms), secs
+    src = str(out.get("src", "")).strip().lower()[:2]
+    return fix_terms(out.get("ko", "").strip(), terms), secs, src if src.isalpha() else ""
 
 
 def main() -> int:

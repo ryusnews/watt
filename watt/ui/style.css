@@ -118,6 +118,8 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .badge.bronze { background: var(--bronze-soft); color: var(--bronze-tx); } .badge.ok { background: rgba(63,212,154,.14); color: var(--ok); }
 .badge.warn { background: rgba(232,174,98,.16); color: var(--warn); } .badge.err { background: rgba(233,114,114,.14); color: var(--err); }
 .en { color: var(--en) !important; } .zh { color: var(--zh) !important; } .ru { color: var(--ru) !important; } .ja { color: var(--ja) !important; }
+.es { color: #E8B66A !important; } .de { color: #9FCB7C !important; } .fr { color: #6FC3D9 !important; } .pt { color: #E39AC2 !important; } .uk { color: #D9C86A !important; }
+.code.other { color: var(--en); }
 kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; background: var(--ctrl); box-shadow: inset 0 -1px 0 var(--line-2); color: var(--fg2); }
 .keys { display: inline-flex; gap: 3px; }
 .progress { height: 8px; border-radius: 8px; background: var(--ctrl); overflow: hidden; }

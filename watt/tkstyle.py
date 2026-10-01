@@ -11,7 +11,8 @@ from . import paths
 BG, BAR, PANEL, CTRL, LINE = "#0F131A", "#161C26", "#131922", "#1E2632", "#252E3B"
 FG, FG2, MUTED, FAINT, DIM = "#ECEFF4", "#B7BFCB", "#8C96A5", "#6A7483", "#4A5362"
 TEAL, BRONZE, OK = "#3BB3D3", "#C9A571", "#7ED6AE"
-LANG = {"en": "#86A8F0", "zh": "#E97A72", "ru": "#B89AF0", "ja": "#72D2AE", "ko": "#9AA4B2"}
+LANG = {"en": "#86A8F0", "zh": "#E97A72", "ru": "#B89AF0", "ja": "#72D2AE", "ko": "#9AA4B2",
+        "es": "#E8B66A", "de": "#9FCB7C", "fr": "#6FC3D9", "pt": "#E39AC2", "uk": "#D9C86A"}
 
 _loaded = False
 SANS, MONO = "Malgun Gothic", "Consolas"  # 글꼴을 못 불러오면 이것
