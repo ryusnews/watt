@@ -40,11 +40,11 @@ _CYR = re.compile(r"[Ѐ-ӿ]")
 _LAT = re.compile(r"[A-Za-z]{2,}")
 
 
-def system_prompt(terms: dict, text: str = "") -> str:
+def system_prompt(terms: dict, text: str = "", chinese: bool = False) -> str:
     parts = [BASE]
     if not text or _LAT.search(text):
         parts.append(LATIN_RULES)
-    if not text or _CJK.search(text):
+    if not text or chinese or _CJK.search(text):
         parts.append(CHINESE_RULES)
     if not text or _CYR.search(text):
         parts.append(CYRILLIC_RULES)
@@ -54,9 +54,9 @@ def system_prompt(terms: dict, text: str = "") -> str:
     return s
 
 
-def matched_terms(text: str) -> dict:
+def matched_terms(text: str, chinese: bool = False) -> dict:
     """용어 사전(wow_terms.json): 영어 약어·중국어·러시아어 → 한국 클라이언트 이름."""
-    return terms.incoming(text)
+    return terms.incoming(text, chinese)
 
 
 _LF_NEXT = (r"(?:tank|heal|healer|heals|dps|dd|group|grp|more|party|full|\d|wc|vc|dm|sfk|bfd|rfc|rfk|rfd|sm|st|brd|zf|"
@@ -76,10 +76,12 @@ def normalize_ocr(text: str) -> str:
     return text
 
 
-def translate(text: str, model: str = MODEL) -> tuple[str, float]:
+def translate(text: str, model: str = MODEL, chinese: bool = False) -> tuple[str, float]:
+    """chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
+    한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
     text = normalize_ocr(text)
-    terms = matched_terms(text)
-    out, secs = chat_json(model, system_prompt(terms, text), text, SCHEMA)
+    terms = matched_terms(text, chinese)
+    out, secs = chat_json(model, system_prompt(terms, text, chinese), text, SCHEMA)
     return out.get("ko", "").strip(), secs
 
 

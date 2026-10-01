@@ -706,7 +706,7 @@ class Live:
                 m["ko"], sec, cached = self.cache[body_key], 0.0, True
             else:
                 try:
-                    m["ko"], sec = incoming.translate(m["body"])
+                    m["ko"], sec = incoming.translate(m["body"], chinese=m["lang"] == "zh" or bool(CJK.search(m["name"])))
                 except Exception as e:
                     m["ko"], sec, error = f"(번역 실패: {type(e).__name__})", 0.0, f"{type(e).__name__}: {e}"
                 self.cache[body_key] = m["ko"]

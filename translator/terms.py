@@ -29,7 +29,8 @@ def _pattern(surface: str, zh_only: bool = False) -> re.Pattern:
         # 앞에 레벨이 붙어 쓰인다(20LR = 20레벨 사냥꾼) — 병음 약자만 앞 숫자를 허용
         flags = 0 if surface in CASE_SENSITIVE and not zh_only else re.I
         before = r"(?<![A-Za-z])" if zh_only else r"(?<![A-Za-z0-9])"
-        return re.compile(rf"{before}{re.escape(surface)}(?![A-Za-z])", flags)
+        plural = "(?:s|es)?" if not zh_only and len(surface) >= 3 and surface.isalpha() and surface.islower() else ""  # locks · hunters
+        return re.compile(rf"{before}{re.escape(surface)}{plural}(?![A-Za-z])", flags)
     return re.compile(re.escape(surface), re.I)  # 한글·한자·키릴 — 포함 여부(키릴은 대소문자 무시)
 
 
@@ -66,7 +67,8 @@ def outgoing(text: str, lang: str) -> dict[str, str]:
     return {s: target_name(t, lang) for s, t in _find(text, _OUT_PAIRS)[:MAX_HINTS]}
 
 
-def incoming(text: str) -> dict[str, str]:
-    has_cjk = bool(CJK.search(text))
+def incoming(text: str, chinese: bool = False) -> dict[str, str]:
+    """chinese: 중국 사용자 글(한자가 없어도 병음 약자 먼저)."""
+    has_cjk = chinese or bool(CJK.search(text))
     pairs = [(s, t) for s, t in _IN_PAIRS if has_cjk or not t.get("zh_only")]
     return {s: t["ko"] for s, t in _find(text, pairs, zh_first=has_cjk)[:MAX_HINTS]}
