@@ -41,6 +41,14 @@ UA = {"User-Agent": f"WATT/{VERSION}"}
 log = logging.getLogger("watt")
 
 
+def fresh_env() -> dict:
+    """다른 WATT(새 버전 · runner · 다시 켜기)를 새 프로그램으로 띄울 환경 — 부모의 PyInstaller 표시를 지운다.
+    물려주면 같은 경로의 새 WATT 가 자신을 옛 WATT 의 하위 프로세스로 여겨 numpy 등을 못 읽는다(0.1.2 → 0.1.8)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_")}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def kind() -> str:
     return "portable" if paths.PORTABLE else "setup"
 
@@ -226,7 +234,7 @@ def launch_apply(ver: str) -> None:
     subprocess.Popen([str(runner / "WATT.exe"), "--role", "apply-delta", "--target", str(paths.APP_DIR),
                       "--stage", str(paths.UPDATE_STAGE / ver), "--pid", str(os.getpid()),
                       "--log", str(paths.LOGS / "update.log")],
-                     creationflags=DETACHED, close_fds=True, cwd=str(runner))
+                     creationflags=DETACHED, close_fds=True, cwd=str(runner), env=fresh_env())
 
 
 def _wait_pid(pid: int, timeout: float = 60) -> None:
@@ -269,6 +277,7 @@ def apply_delta(target: str, stage_dir: str, pid: int, logfile: str | None = Non
     """update\\runner\\WATT.exe --role apply-delta 로 돈다: 기다림 → 옛 파일 옮겨 두기 → 새 파일 넣기 → 다시 켜기."""
     app, d = Path(target), Path(stage_dir)
     if logfile:
+        Path(logfile).parent.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=logfile, level=logging.INFO, encoding="utf-8", format="%(asctime)s %(levelname)s %(message)s")
     done: list[tuple[Path, Path | None]] = []  # (넣은 자리, 옮겨 둔 옛 파일)
     try:
@@ -319,7 +328,7 @@ def apply_delta(target: str, stage_dir: str, pid: int, logfile: str | None = Non
             except OSError:
                 logging.exception("rollback %s", dst)
         shutil.rmtree(d, ignore_errors=True)  # 같은 것을 또 시도하지 않게
-    subprocess.Popen([str(app / "WATT.exe")], creationflags=DETACHED, close_fds=True, cwd=str(app))
+    subprocess.Popen([str(app / "WATT.exe")], creationflags=DETACHED, close_fds=True, cwd=str(app), env=fresh_env())
     return 0
 
 
@@ -355,7 +364,7 @@ def apply_portable(target: str, pid: int) -> int:
         logging.info("updated %s from %s", dst, src)
     except Exception:
         logging.exception("update failed")
-    subprocess.Popen([str(dst / "WATT.exe")], creationflags=DETACHED, close_fds=True, cwd=str(dst))
+    subprocess.Popen([str(dst / "WATT.exe")], creationflags=DETACHED, close_fds=True, cwd=str(dst), env=fresh_env())
     return 0
 
 
