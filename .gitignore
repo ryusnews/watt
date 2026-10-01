@@ -35,3 +35,6 @@ tools/ocr_server.ps1
 tools/find_chat.ps1
 tools/chat_rate.ps1
 tools/diff_probe.ps1
+
+# 평가용 게임 화면 · 정답(다른 플레이어 이름 · 대화 — 올리지 않는다)
+/eval/private/
