@@ -1,0 +1,21 @@
+{
+  // WATT 받는 서버 — 사전 후보(#7) · 인식 오류 신고(#14). 비밀 값(ADMIN_TOKEN, SALT)은 `wrangler secret put` 으로만
+  "name": "watt-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "d1_databases": [{ "binding": "DB", "database_name": "watt", "database_id": "c453cbe3-f8a4-4b3d-938d-0b420334eb4c" }],
+  "r2_buckets": [{ "binding": "REPORTS", "bucket_name": "watt-reports" }],
+  "triggers": { "crons": ["17 3 * * *"] },  // 매일 정리
+  "vars": {
+    "REPORT_MAX_BYTES": "1048576",
+    "REPORT_EVERY_HOURS": "24",   // 설치마다 신고 간격
+    "REPORT_IP_DAY": "3",
+    "REPORT_ALL_DAY": "500",      // 하루 전체 상한 — 넘으면 받지 않는다(요금 방지)
+    "TERMS_IP_DAY": "5",
+    "TERMS_ALL_DAY": "20000",
+    "TERMS_ITEMS_MAX": "30",
+    "KEEP_DAYS": "30"
+  },
+  "observability": { "enabled": true }
+}
