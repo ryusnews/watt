@@ -2,24 +2,29 @@
 
 ```
 python tools/build.py               # 아이콘 → WATT.exe → 오픈소스 고지 → selftest → 포터블 zip(+ 풀어서 selftest)
-python tools/build.py --installer   # + 설치 프로그램 — 필요할 때만
+python tools/build.py --installer   # + 설치 프로그램 — 릴리스할 때는 항상
+python tools/prune_releases.py      # 릴리스 뒤: 최근 2개만 파일을 두고 옛 첨부 파일 지우기(태그 · 변경 내용은 남김)
 ```
 
 | 결과 | 위치 |
 |---|---|
 | 실행 파일(폴더형, 약 96MB) | `dist/WATT/WATT.exe` |
 | **포터블(기본 배포)** | `dist/portable/WATT-Portable-<버전>.zip` |
-| 설치 프로그램(필요할 때만) | `dist/installer/WATT-Setup-<버전>.exe` |
+| 설치 프로그램 | `dist/installer/WATT-Setup-<버전>.exe` |
 
-- **포터블이 기본**: 개발·릴리스는 포터블에 먼저 적용한다. 설치판은 필요할 때(예: 설치판의 업데이트 방식이 바뀔 때) 맞춰 낸다.
-  업데이트 확인은 자기 종류 파일이 있는 가장 새 릴리스를 고르므로, 포터블만 낸 릴리스는 설치판 사용자에게 안 보인다.
+- **개발 · 시험은 포터블로, 릴리스는 두 파일 모두**: 0.1.2 의 옛 업데이트는 최신 릴리스의 설치 파일만 보므로(#15).
+- **릴리스 파일은 최근 2개만**(초기 빠른 개발 단계): 업데이트는 최신만 쓰고, 하나 앞은 되돌리기용. 옛 릴리스는 첨부 파일만 지운다.
+  나중에 정식 · 베타를 나누면(브랜치 · 사전 릴리스) 그때 다시 정한다.
 - 포터블 판별: `WATT.exe` 옆 `portable.txt` → 설정·기록은 `<폴더>\data`(쓸 수 없는 폴더면 `%LOCALAPPDATA%\WATT`).
-- 포터블 업데이트: zip 을 `data\update\<버전>` 에 풀고 그 안의 새 `WATT.exe --role apply-update --target <폴더> --pid <n>` 이
-  옛 WATT 가 꺼지길 기다렸다 `_internal` 을 지우고 새 파일을 복사(data 는 그대로)한 뒤 다시 켠다. 기록: `data\logs\update.log`.
+- 업데이트(0.1.8~, `watt/update.py`, 설치판 · 포터블 공통): 최신 릴리스의 포터블 zip 에서 바뀐 파일만 HTTP Range 로 받아
+  `update\<버전>` 에 두고 다시 시작할지 묻는다. 바꿔 끼우기는 지금 프로그램을 `update\runner` 로 복사해 `--role apply-delta` 로
+  (옛 파일은 backup, 실패하면 되돌림). 설치판은 '앱 및 기능' 버전도 고친다. 기록: `logs\update.log`.
+  0.1.3–0.1.7 포터블의 옛 방식(`--role apply-update`)은 옮겨 가기용으로 남아 있다.
 
 - 버전은 `watt/__init__.py` 의 `VERSION` 하나만 바꾼다(exe 버전 정보·설치 프로그램 이름이 따라간다).
 - 버전 규칙 `0.1.N`: 안건(추가·수정·변경·삭제) 하나 = GitHub 이슈 하나 = N+1 = 릴리스 하나.
-  이슈 열기 → 고치기 → 커밋 메시지에 `Closes #번호` → VERSION·CHANGELOG → `python tools/build.py` → 릴리스 `v0.1.N` 에 설치 파일.
+  이슈 열기 → 고치기 → 커밋 메시지에 `Closes #번호` → VERSION·CHANGELOG → `python tools/build.py --installer`
+  → 릴리스 `v0.1.N` 에 포터블 zip · 설치 파일 → `python tools/prune_releases.py`.
 - 필요한 것: Python 3.12 + `pip install pywebview numpy pyinstaller winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Globalization winrt-Windows.Storage.Streams winrt-Windows.Foundation winrt-Windows.Foundation.Collections`, Inno Setup 6(내 계정 설치: `%LOCALAPPDATA%\Programs\Inno Setup 6`).
 - `selftest` 는 exe 안에 모듈·데이터·OCR·글꼴·WebView2·API 가 다 들어갔는지 창을 띄우지 않고 확인한다(`WATT.exe --role selftest` → `logs/selftest.json`).
 
@@ -28,9 +33,8 @@ python tools/build.py --installer   # + 설치 프로그램 — 필요할 때만
 - 사용자 데이터(설정·기록·채팅 영역)는 `%LOCALAPPDATA%\WATT` — 제거해도 남긴다.
 - 조용히 설치: `WATT-Setup-0.1.0.exe /VERYSILENT /CURRENTUSER`
 - WATT 가 켜져 있으면 설치·제거가 닫기를 요청한다(AppMutex).
-- 앱 안 업데이트(`watt/update.py`): GitHub 최신 릴리스의 `WATT-Setup-*.exe` 를 받아 GitHub 가 주는 SHA-256 과 맞춘 뒤
-  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /FORCECLOSEAPPLICATIONS /RELAUNCH=1` 로 실행하고 앱은 꺼진다.
-  설치 프로그램은 옛 `_internal` 을 지우고 설치한 뒤 `RELAUNCH=1` 이면 다시 켠다. 릴리스에는 설치 파일 이름을 꼭 `WATT-Setup-<버전>.exe` 로.
+- 0.1.7 이하의 앱 안 업데이트는 최신 릴리스의 `WATT-Setup-*.exe` 를 조용히 실행한다(`/VERYSILENT … /RELAUNCH=1`).
+  그래서 릴리스의 설치 파일 이름은 꼭 `WATT-Setup-<버전>.exe` 로. 0.1.8 부터는 위의 바뀐 파일 받기.
 
 ## 알아 둘 것
 - **코드 서명 없음** — 다른 PC 에서 처음 실행하면 "Windows의 PC 보호"(SmartScreen)가 뜬다. 배포하려면 서명 인증서(예: Azure Trusted Signing 월 구독, OV 인증서)가 필요하다.
