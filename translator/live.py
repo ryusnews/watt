@@ -263,8 +263,11 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         row = {"y": chosen["y"], "x": xs[(len(xs) - 1) // 2], "text": text, "lang": lang, "feat": feat,
                "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
         if not parse_header(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
-            row["alt_header"] = next((c["t"] for c in (e, k, r, z) if c and (h := parse_header(c["t"], True)) and h["ch"]),
-                                     None)
+            # 채널이 있거나, 외침 · 귓속말 · 일반 대화(채널 없음)처럼 한국어 엔진이 '님의 외침:' 표시만 읽고 이름을 놓친 줄
+            # ('[收白菜出白菜]님의 외침:' → 한국어 엔진 '[님의외침:', 중국어 엔진 '[收白菜出白菜]召：', 2026-10-01)
+            yell = re.search(r"님\s*의|외\s*침|귓\s*속|말\s*[:：]", text)
+            row["alt_header"] = next((c["t"] for c in (e, k, r, z) if c and (h := parse_header(c["t"], True)) and
+                                      (h["ch"] or (yell and h["name"].strip()))), None)
         out.append(row)
     return out
 
