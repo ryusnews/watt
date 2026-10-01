@@ -634,10 +634,10 @@ class Overlay:
                 self.text.insert("end", f"  {it['name']}  ", "meta")
                 self.text.insert("end", "광고", "ad")
                 continue
-            self.text.insert("end", f"  {it['name']}\n", "meta")
+            self.text.insert("end", f"  {it['name']}" + ("  ↻" if it.get("repeat") else "") + "\n", "meta")
             if it.get("ko"):
                 self.text.insert("end", it["ko"], "ko")
-                if self.cfg.get("show_original"):
+                if self.cfg.get("show_original") and not it.get("pass"):
                     self.text.insert("end", "\n" + it["body"], "orig")
             else:
                 self.text.insert("end", it["body"], "pending")
@@ -800,7 +800,7 @@ class Live:
         stay = [i for i, (k, y) in enumerate(cur)
                 if any((k == q or difflib.SequenceMatcher(None, k, q).ratio() >= 0.95)
                        and ((py <= y + 2) if top_mode else (py >= y - 2)) for q, py in self.prev_keys)]
-        self.prev_keys = cur
+        self.prev_keys_old, self.prev_keys = self.prev_keys, cur
         stay_set = set(stay)
         newest_top = top_mode
         edge = (min(stay) if newest_top else max(stay)) if stay else None
@@ -811,6 +811,12 @@ class Live:
                     (edge is None or (i < edge if newest_top else i > edge)
                      or max(self.seen.age(near), self.seen_body.age(near)) > 20):
                 new = True  # 켰을 때 보이던(번역하지 않은) 글을 다시 올린 것 — 한 번은 번역(怒焰来T 4=1 을 수십 번 올려도 안 보이던 문제)
+            if not new and not self.first and near in self.shown and i not in stay_set and edge is not None and \
+                    (i < edge if newest_top else i > edge) and max(self.seen.age(near), self.seen_body.age(near)) > 3 and \
+                    not any(difflib.SequenceMatcher(None, cur[i][0], q).ratio() >= 0.8
+                            and ((py <= cur[i][1] + 2) if top_mode else (py >= cur[i][1] - 2)) for q, py in self.prev_keys_old):
+                new = True  # 같은 글을 다시 올림 — 통역 창도 채팅창처럼 한 번 더(번역은 저장된 것). 앞 화면 같은 자리 · 아래에
+                m["repeat"] = True  # 비슷한 글이 있었으면 OCR 이 흔들려 다르게 읽은 같은 줄이라 뺀다
             if not new:
                 if sim < 1.0:  # OCR 이 흔들려 비슷하게 읽힌 같은 메시지 — 중복 판정이 맞는지 볼 수 있게
                     events.append(("dup", {"body": m["body"], "near": near, "sim": round(sim, 3), "lang": m["lang"]}))
@@ -822,7 +828,7 @@ class Live:
             elif edge is not None and (i > edge if newest_top else i < edge):
                 decision = "skip_old"  # 앞 화면에도 있던 메시지보다 옛 쪽
             elif m["lang"] == "ko":
-                decision = "skip_ko"
+                decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
             elif is_junk(m["body"]):
@@ -832,11 +838,13 @@ class Live:
                 decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
-            if decision == "queued" and self.ocr.last_img is not None:  # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
+            if decision == "queued" and not m.get("pass") and not m.get("repeat") and self.ocr.last_img is not None:  # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
                 try:
                     m.update(refine(m, self.ocr.last_img, lh, self.ocr.ocr))
                 except Exception as e:  # 다시 읽기가 안 되면 처음 읽은 그대로
                     self.trace.write("error", where="refine", msg=f"{type(e).__name__}: {e}")
+            if decision == "pass_ko":  # 한국어 — 번역 없이 그대로, 순서는 번역할 글과 같은 줄로
+                decision, m["pass"] = "queued", True
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
                 ad = self.ads.check(m["name"], m["body"])
                 m["kind"], m["ad"] = ad["kind"], ad
@@ -852,6 +860,7 @@ class Live:
                 queued.append(m)
             events.append(("msg", {"id": m["id"], "ch": m["ch"], "name": m["name"], "lang": m["lang"], "body": m["body"],
                                    "decision": decision, "near_sim": round(sim, 3), "kind": m.get("kind"),
+                                   "pass": m.get("pass"), "repeat": m.get("repeat"),
                                    "readings": m.get("readings"),
                                    "ad": m.get("ad"),
                                    "rows": [{"lang": x["lang"], "x": x["x"], "y": x["y"], "feat": x["feat"], "cand": x["cand"]}
@@ -909,14 +918,17 @@ class Live:
             t0 = time.monotonic()
             queue_wait = t0 - m.get("t_enq", t0)
             error = None
-            if body_key in self.cache:
+            if m.get("pass"):
+                m["ko"], sec, cached = m["body"], 0.0, True
+            elif body_key in self.cache:
                 m["ko"], sec, cached = self.cache[body_key], 0.0, True
             else:
                 try:
                     m["ko"], sec = incoming.translate(m["body"], chinese=m["lang"] == "zh" or bool(CJK.search(m["name"])))
                 except Exception as e:
                     m["ko"], sec, error = f"(번역 실패: {type(e).__name__})", 0.0, f"{type(e).__name__}: {e}"
-                self.cache[body_key] = m["ko"]
+                if not error:
+                    self.cache[body_key] = m["ko"]
                 cached = False
                 self.stats["translated"] += 1
                 self.stats["tr_s"] = sec
