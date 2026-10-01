@@ -286,26 +286,39 @@ class Api:
         except Exception as e:  # 인터넷이 없거나 GitHub 이 답하지 않음 — 조용히
             log.info("update check failed: %s", e)
             return {"error": "업데이트를 확인하지 못했습니다"} if force else None
+        if self._update.get("newer") and not self._update.get("ready") and paths.FROZEN:
+            self.apply_update()  # 뒤에서 바뀐 파일만 받아 둔다 — 끝나면 다시 시작할지 묻는다
         return self._update
 
     @_logged
     def apply_update(self) -> dict:
+        """새 버전의 바뀐 파일만 받아 둔다(#15). 끝나면 {ready: 버전} — 화면이 지금 다시 시작할지 묻는다."""
         def work(cancel):
             info = self._update or update.check()
+            if info.get("ready"):
+                return {"ready": info["ready"]}
             if not info.get("newer"):
                 return {"latest": True}
-            if not paths.FROZEN or not info.get("sha256"):  # 개발 실행이거나 확인값이 없으면 페이지만
+            if not paths.FROZEN:  # 개발 실행 — 페이지만
                 os.startfile(info["page"])
                 return {"opened": info["page"]}
-            got = update.download(info, lambda d, t: self._emit(type="progress", task="update", done=d, total=t), cancel)
-            log.info("update %s -> %s (%s)", VERSION, info["version"], info["kind"])
-            self.stop_all()
-            release_lock()  # 설치 프로그램·덮어쓰기가 'WATT 가 켜져 있다'며 멈추지 않게
-            update.start(info, got)
-            if self._window:
-                self._window.destroy()
-            return {"installing": info["version"]}
+            plan = update.stage(info, lambda d, t: self._emit(type="progress", task="update", done=d, total=t), cancel)
+            info["ready"] = plan["version"]
+            return {"ready": plan["version"], "mb": round(plan["bytes"] / 1e6, 1)}
         return self._task("update", work)
+
+    @_logged
+    def restart_update(self) -> dict:
+        """받아 둔 새 버전으로 지금 바꾸고 다시 켠다."""
+        ver = update.pending()
+        if not ver:
+            return {"ready": False}
+        self.stop_all()
+        release_lock()  # 바꿔 끼우기가 끝나고 다시 켜질 새 WATT 가 잠금을 잡을 수 있게
+        update.launch_apply(ver)
+        if self._window:
+            self._window.destroy()
+        return {"restarting": ver}
 
     @_logged
     def delete_model(self, name: str) -> dict:
@@ -556,10 +569,19 @@ def main() -> int:
         return 0
     paths.ensure()
     logging.basicConfig(level=logging.INFO, handlers=[housekeeping.file_handler("app.log")])
+    ready = update.pending() if paths.FROZEN else None
+    if ready:  # 지난번에 받아 둔 새 버전 — 켤 때 바꿔 끼우고 새 버전으로 다시 켜진다(#15)
+        log.info("apply staged update %s", ready)
+        try:
+            release_lock()
+            update.launch_apply(ready)
+            return 0
+        except Exception:
+            log.exception("apply staged update failed")
+            _single_instance()
     threading.Thread(target=housekeeping.prune, daemon=True).start()  # 오래된 기록·다 쓴 설치 파일
     log.info("start %s frozen=%s portable=%s data=%s", VERSION, paths.FROZEN, paths.PORTABLE, paths.DATA)
-    if paths.PORTABLE:
-        update.cleanup_stage()  # 지난 업데이트에서 풀어 둔 새 버전 파일
+    update.cleanup_stage()  # 지난 업데이트에 쓴 것(받아 두고 아직 안 쓴 새 버전은 남긴다)
     # 조용히 꺼지는 일이 없게 — 처리 안 된 예외(메인·스레드)는 모두 app.log 에
     sys.excepthook = lambda et, ev, tb: log.critical("unhandled", exc_info=(et, ev, tb))
     threading.excepthook = lambda a: log.critical("thread %s", a.thread and a.thread.name,

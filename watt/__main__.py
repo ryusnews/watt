@@ -4,7 +4,8 @@ WATT.exe                  런처(설정 마법사·대시보드)
 WATT.exe --role live      통역 창(채팅 읽기 → 번역 → 게임 위 창)
 WATT.exe --role input     보내기 입력창(Ctrl+Shift+K)
 WATT.exe --role selftest  묶음(exe)이 제대로 됐는지 점검 → logs/selftest.json (창을 띄우지 않는다)
-WATT.exe --role apply-update --target <폴더> --pid <n>   포터블 업데이트(새 버전 쪽에서 옛 폴더를 덮어쓴다)
+WATT.exe --role apply-delta --target <폴더> --stage <받아 둔 곳> --pid <n>   바뀐 파일 바꿔 끼우기(update\runner 에서)
+WATT.exe --role apply-update --target <폴더> --pid <n>   옛 포터블 업데이트(0.1.3–0.1.7 이 부른다)
 개발 중: python -m watt [--role ...]
 """
 import argparse
@@ -85,10 +86,15 @@ def selftest() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(prog="WATT")
-    ap.add_argument("--role", choices=["app", "live", "input", "selftest", "apply-update"], default="app")
+    ap.add_argument("--role", choices=["app", "live", "input", "selftest", "apply-update", "apply-delta"], default="app")
     ap.add_argument("--target")
     ap.add_argument("--pid", type=int, default=0)
+    ap.add_argument("--stage")
+    ap.add_argument("--log")
     args, _ = ap.parse_known_args()
+    if args.role == "apply-delta":
+        from watt import update
+        return update.apply_delta(args.target, args.stage, args.pid, args.log)
     if args.role == "apply-update":
         from watt import update
         return update.apply_portable(args.target, args.pid)

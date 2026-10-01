@@ -40,7 +40,7 @@ window.WATT = {
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
         if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
         if (ev.task === 'update' && ev.result && ev.result.opened) toast('릴리스 페이지를 열었습니다');
-        if (ev.task === 'update' && ev.result && ev.result.installing) toast(`WATT ${ev.result.installing} 설치 중. 곧 다시 켜집니다`, 'ok');
+        if (ev.task === 'update' && ev.result && ev.result.ready) { if (S.update) S.update.ready = ev.result.ready; askRestart(ev.result.ready); }
       }
       refresh(true);
     }
@@ -399,8 +399,14 @@ function renderUpdate() {
   b.hidden = !(u && u.newer);
   if (b.hidden) return;
   b.disabled = !!p;
-  $('#update-text').textContent = p ? `${pct(p)}%` : u.version;
-  b.dataset.tip = p ? '받는 중' : `새 버전 ${u.version}`;
+  $('#update-text').textContent = p ? `${pct(p)}%` : u.ready || u.version;
+  b.classList.toggle('ready', !!u.ready);
+  b.dataset.tip = p ? '받는 중' : u.ready ? `${u.ready} 받음 · 다음에 켤 때 적용 · 누르면 지금 다시 시작` : `새 버전 ${u.version}`;
+}
+async function askRestart(ver) {
+  renderUpdate();
+  if (await confirmBox(`WATT ${ver}`, '받았습니다. 지금 다시 시작할까요?', '다시 시작', '나중에', false)) call('restart_update');
+  else toast('다음에 켤 때 적용됩니다');
 }
 async function checkUpdate(force) {
   const u = await call('check_update', force);
@@ -410,15 +416,16 @@ async function checkUpdate(force) {
 }
 async function applyUpdate() {
   const u = S.update; if (!u) return;
-  if (!(await confirmBox(`WATT ${u.version}`, '받아서 설치하고 다시 켭니다', '업데이트'))) return;
+  if (u.ready) return askRestart(u.ready);
   S.progress.update = { done: 0, total: 0 }; renderUpdate();
   call('apply_update');
 }
 
 /* ---------- 확인 창 ---------- */
-function confirmBox(title, text = '', yes = '지우기') {
+function confirmBox(title, text = '', yes = '지우기', no = '취소', danger = true) {
   return new Promise((resolve) => {
     $('#confirm-title').textContent = title; $('#confirm-text').textContent = text; $('#confirm-yes').textContent = yes;
+    $('#confirm-no').textContent = no; $('#confirm-yes').className = 'btn ' + (danger ? 'danger' : 'primary');
     $('#confirm').hidden = false; $('#confirm-no').focus();
     const done = (v) => { $('#confirm').hidden = true; $('#confirm-yes').onclick = $('#confirm-no').onclick = null; resolve(v); };
     $('#confirm-yes').onclick = () => done(true);
@@ -591,7 +598,7 @@ function mockApi() {
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),
-    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }),
+    check_update: () => ok({ version: '0.1.3', current: '0.1.2', newer: true }), apply_update: () => ok({ started: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),

@@ -43,6 +43,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[UninstallDelete]
+; 설치 없이 바꿔 끼운 파일(#15)은 삭제 프로그램 목록에 없다 — 프로그램 파일은 통째로
+Type: filesandordirs; Name: "{app}\_internal"
+
 [InstallDelete]
 ; 옛 버전의 내부 파일이 남지 않게(업데이트 때)
 Type: filesandordirs; Name: "{app}\_internal"
