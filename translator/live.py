@@ -58,11 +58,12 @@ def looks_russian(text: str) -> bool:
 RADICAL_NOISE = re.compile(r"[丿彐凵匚卜乃乬巳丨亅冂刂廾乂囗乁冖勹匸亠]")
 
 
-def is_junk(body: str) -> bool:
+def is_junk(body: str, named: bool = False) -> bool:
     """OCR 잡음(*fifi + +, R-fi±T2, 4/ixFf#) — 번역하지 않는다. 글자(한글·한자·라틴·키릴)가 4자 미만이거나 기호·숫자가 35%↑."""
     chars = re.sub(r"\s", "", body)
     letters = len(re.findall(r"[A-Za-zЀ-ӿ一-鿿가-힣]", chars))
-    if letters < 4 and not (letters >= 2 and CJK.search(chars)):
+    # 이름이 읽힌 메시지의 짧은 대답(yes · thx · wow! · ye · PVP)은 진짜 말 — 영어권 채널에서 이런 말이 많이 빠졌다(2026-10-02)
+    if letters < 4 and not (letters >= 2 and (CJK.search(chars) or named)):
         return True
     if len(RADICAL_NOISE.findall(chars)) >= 3:  # 한국어 채널 이름을 중국어 엔진이 부수로 읽은 조각('丿 H - 9 彐引 ]')
         return True
@@ -946,7 +947,7 @@ class Live:
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
-            elif is_junk(m["body"]) or garbled_ko(m["body"]):
+            elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]):
                 decision = "skip_junk"
             elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("
                                     or re.match(r"[^\[]*\]", m["body"])):  # '攻击 ]' — 앞 줄에서 떨어진 링크 끝 조각
