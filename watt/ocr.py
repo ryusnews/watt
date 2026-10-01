@@ -67,18 +67,40 @@ class Ocr:
 
     @staticmethod
     def lines_of(result, scale: float = 1.0) -> list[dict]:
+        """엔진의 줄 — 한 줄이 화면 두 줄에 걸쳐 있으면(한국어 엔진이 가끔 묶는다) 낱말 세로 위치로 나눈다."""
         out = []
         for ln in result.lines:
             words = list(ln.words)
             if not words:
                 continue
-            ys = [w.bounding_rect.y for w in words]
-            bs = [w.bounding_rect.y + w.bounding_rect.height for w in words]
-            xs = [w.bounding_rect.x for w in words]
-            rs = [w.bounding_rect.x + w.bounding_rect.width for w in words]
-            out.append({"t": ln.text, "x": int(min(xs) / scale), "y": int(min(ys) / scale),
-                        "h": int((max(bs) - min(ys)) / scale), "r": int(max(rs) / scale), "b": int(max(bs) / scale)})
+            groups: list[list] = []  # 세로로 겹치는 낱말 = 같은 줄(문장 부호처럼 낮게 붙은 낱말도)
+            for w in sorted(words, key=lambda w: w.bounding_rect.y):
+                top, bot = w.bounding_rect.y, w.bounding_rect.y + w.bounding_rect.height
+                if groups:
+                    g_bot = max(q.bounding_rect.y + q.bounding_rect.height for q in groups[-1])
+                    if top < g_bot - min(w.bounding_rect.height, 8) * 0.3:
+                        groups[-1].append(w)
+                        continue
+                groups.append([w])
+            if len(groups) > 1:
+                for g in groups:
+                    g.sort(key=lambda w: w.bounding_rect.x)
+                    out.append(Ocr._line(" ".join(w.text for w in g), g, scale))
+                continue
+            out.append(Ocr._line(ln.text, words, scale))
         return out
+
+    @staticmethod
+    def _line(text: str, words: list, scale: float) -> dict:
+        ys = [w.bounding_rect.y for w in words]
+        bs = [w.bounding_rect.y + w.bounding_rect.height for w in words]
+        xs = [w.bounding_rect.x for w in words]
+        rs = [w.bounding_rect.x + w.bounding_rect.width for w in words]
+        return {"t": text, "x": int(min(xs) / scale), "y": int(min(ys) / scale),
+                "h": int((max(bs) - min(ys)) / scale), "r": int(max(rs) / scale), "b": int(max(bs) / scale),
+                # 낱말별 위치 — 한 줄에 여러 문자가 섞이면 부분마다 맞는 엔진 것을 쓰려고(live.pick_lines)
+                "w": [[w.text, int(w.bounding_rect.x / scale), int((w.bounding_rect.x + w.bounding_rect.width) / scale)]
+                      for w in words]}
 
 
 class Reader:
@@ -103,7 +125,7 @@ class Reader:
         self.last_sig, self.last_img = sig, img
         big = screen.upscale2(img) if self.scale == 2 else img
         res = self.ocr.recognize(big)
-        lines = {k: [{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h")} for l in Ocr.lines_of(r, self.scale)]
+        lines = {k: [{kk: v for kk, v in l.items() if kk in ("t", "x", "y", "h", "w")} for l in Ocr.lines_of(r, self.scale)]
                  for k, r in res.items()}
         return {"same": False, "ms": int((time.perf_counter() - t0) * 1000), "diff": diff, "lines": lines}
 

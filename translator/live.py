@@ -172,6 +172,29 @@ def body_of(text: str) -> str:
     return HEAD_CUT.sub("", text or "", count=1)
 
 
+def compose(k: dict | None, chosen: dict, lang: str, line_h: int) -> str:
+    """머리([6. 파티찾기] [이름]:)는 한국어 엔진, 본문은 본문 언어 엔진 — 낱말 위치로 나눈다.
+    한 엔진으로 줄째 읽으면 한국어 채널 이름 · 라틴 이름이 중국어 엔진에서 가짜 한자로 깨졌다(2026-10-01 모니터링)."""
+    if not k or not k.get("w") or not chosen.get("w"):
+        return chosen["t"]
+    acc = ""
+    for i, (t, _, right) in enumerate(k["w"]):
+        acc = f"{acc} {t}" if acc else t
+        m = HEAD_CUT.match(acc + " ")
+        if m and m.end() >= len(acc) and parse_header(acc + " x", True):
+            if i + 1 >= len(k["w"]):
+                return chosen["t"]
+            body_x = k["w"][i + 1][1]
+            body = [w for w in chosen["w"] if w[1] >= body_x - line_h * 0.3]
+            if not body:
+                return chosen["t"]
+            sep = "" if lang == "zh" else " "
+            return acc + " " + sep.join(w[0] for w in body)
+        if len(acc) > 72:
+            break
+    return chosen["t"]
+
+
 def pick_lines(lines: dict, line_h: int) -> list[dict]:
     """엔진들의 같은 위치 줄 중 그럴듯한 것: 한글 → ko, 한자 → zh, 진짜 러시아어(키릴 60%↑) → ru, 그 밖 → en."""
     en, ko, zh, ru = (lines.get("en-US") or [], lines.get("ko") or [], lines.get("zh-Hans-CN") or [],
@@ -186,7 +209,22 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
     out = []
     for row in rows:
         def by(src):
-            return next((l for l in row if l in src), None)
+            """그 엔진의 이 줄 — 사이가 떠서 여러 토막으로 읽었으면 위치 순서대로 잇는다(뒷토막이 빠지던 문제)."""
+            mine = sorted((l for l in row if any(l is s for s in src)), key=lambda l: l["y"])
+            if not mine:
+                return None
+            # 같은 줄의 토막만 — 세로가 가깝고 가로로 겹치지 않는 것(아랫줄 토막까지 묶이면 두 메시지가 붙었다)
+            first = mine[0]
+            parts = [first]
+            for l in mine[1:]:
+                right = lambda q: max((w[2] for w in q.get("w", [])), default=q["x"])  # noqa: E731
+                if abs(l["y"] - first["y"]) <= line_h * 0.35 and all(l["x"] >= right(q) - 4 or right(l) <= q["x"] + 4 for q in parts):
+                    parts.append(l)
+            parts.sort(key=lambda l: l["x"])
+            if len(parts) == 1:
+                return parts[0]
+            return {"t": " ".join(p["t"] for p in parts), "x": parts[0]["x"], "y": min(p["y"] for p in parts),
+                    "h": max(p.get("h", 0) for p in parts), "w": [w for p in parts for w in p.get("w", [])]}
         k, z, e, r = by(ko), by(zh), by(en), by(ru)
         # 퀘스트 · 아이템 링크는 보는 사람의 클라이언트 언어(한국어)로 보인다 — 보낸 사람 언어와 무관하므로 언어 판정에서 뺀다.
         # 'LFM [늙은 불꽃눈]' 을 한국어로 판정해 건너뛰거나, 중국어 엔진이 링크를 가짜 한자([旨吕罟])로 읽어 중국어로 갈랐다(2026-10-01)
@@ -208,7 +246,8 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
             chosen, lang = r, "ru"  # 영어 엔진이 깨끗하게 읽은 줄은 영어로 둔다(짧은 영어가 가짜 키릴로 읽힐 때)
         else:
             chosen, lang = (e or k or z or r), "en"  # 러시아어 엔진만 찾은 줄도 있다
-        text = CJK_GAP.sub("", chosen["t"]) if lang == "zh" else chosen["t"]
+        text = compose(k, chosen, lang, line_h) if lang != "ko" else chosen["t"]
+        text = CJK_GAP.sub("", text) if lang == "zh" else text
         if lang == "en":
             text = repair_segments(text, r and r["t"], z and z["t"])
         if links and lang != "ko":  # 링크 글자는 한국어 엔진이 읽은 것으로

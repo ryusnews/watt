@@ -74,7 +74,8 @@ def read_frame(eng: ocr.Ocr, img: np.ndarray) -> tuple[list[dict], float]:
     t0 = time.perf_counter()
     r = eng.recognize(screen.upscale2(img))
     ms = (time.perf_counter() - t0) * 1000
-    lines = {k: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h")} for l in ocr.Ocr.lines_of(v, 2)] for k, v in r.items()}
+    lines = {k: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in ocr.Ocr.lines_of(v, 2)]
+             for k, v in r.items()}
     hs = [l["h"] for ls in lines.values() for l in ls]
     lh = int(np.median(hs) * 1.25) if hs else 15
     rows = live.pick_lines(lines, lh)
