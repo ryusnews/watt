@@ -21,6 +21,7 @@ DEFAULTS = {
     "input_on": True,            # 런처를 켜면 보내기 입력창도 켜기
     "welcomed": False,           # 첫 실행 화면을 지났나
     "onboarded": False,          # 홈 도움말(말풍선)을 봤나
+    "update_check": True,        # 켤 때 GitHub 에서 새 버전 확인(6시간에 한 번)
 }
 
 

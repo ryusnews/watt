@@ -43,6 +43,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; 옛 버전의 내부 파일이 남지 않게(업데이트 때)
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "..\dist\WATT\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -52,6 +56,8 @@ Name: "{autodesktop}\WATT"; Filename: "{app}\WATT.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\WATT.exe"; Description: "{cm:LaunchProgram,WATT}"; Flags: nowait postinstall skipifsilent
+; 앱 안 업데이트(/RELAUNCH=1): 조용히 설치한 뒤 다시 켠다
+Filename: "{app}\WATT.exe"; Flags: nowait; Check: IsRelaunch
 
 [CustomMessages]
 korean.AskModels=WATT 로 받은 AI 번역 모델도 지울까요?%n(수 GB · Ollama 프로그램은 남습니다)
@@ -63,6 +69,11 @@ english.AskData=Also remove WATT settings and logs (including chat logs)?
 
 [Code]
 { 삭제할 때 WATT 가 넣은 것만 물어보고 지운다. 조용히 삭제(/SILENT)하면 기본값 '아니오' — 아무것도 지우지 않는다 }
+function IsRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
 function DataDir: String;
 begin
   Result := ExpandConstant('{localappdata}\WATT');

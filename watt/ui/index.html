@@ -65,6 +65,7 @@
   </nav>
   <div class="drag pywebview-drag-region grow"></div>
   <div class="engine" id="engine" data-tip="AI 엔진"><i class="dot"></i><span id="engine-text">…</span></div>
+  <button class="update-pill" id="btn-update" hidden data-tip="새 버전"><svg class="ic sm"><use href="#i-download"/></svg><span id="update-text"></span></button>
   <button class="icon-btn help" id="btn-help" aria-label="도움말" data-tip="도움말 다시 보기"><svg class="ic"><use href="#i-help"/></svg></button>
   <div class="winbtns">
     <button id="btn-min" aria-label="최소화"><svg class="ic sm"><use href="#i-min"/></svg></button>
@@ -192,6 +193,10 @@
         <div class="field"><span>위치</span><button class="icon-btn sq" id="set-resetpos" aria-label="처음 위치로" data-tip="채팅창 바로 위로 되돌리기"><svg class="ic sm"><use href="#i-reset"/></svg></button></div>
       </section>
       <section class="panel card">
+        <h2><svg class="ic bronze"><use href="#i-download"/></svg>업데이트</h2>
+        <div class="field" data-tip="켤 때 GitHub 에서 새 버전을 확인합니다"><span>자동 확인</span><button class="switch" id="set-update" role="switch" aria-label="업데이트 자동 확인"></button></div>
+      </section>
+      <section class="panel card">
         <h2><svg class="ic bronze"><use href="#i-log"/></svg>기록</h2>
         <div class="field" data-tip="읽은 줄과 번역을 이 PC에만 남깁니다"><span>저장</span>
           <span class="inline"><button class="icon-btn sq" id="set-openlogs" aria-label="기록 폴더 열기" data-tip="기록 폴더 열기"><svg class="ic sm"><use href="#i-folder"/></svg></button>
@@ -219,7 +224,8 @@
 <section class="view" id="view-about">
   <div class="about">
     <div class="about-head"><svg class="logo-lg"><use href="#logo-lg"/></svg>
-      <div><h1>WATT</h1><div class="mono muted" id="about-ver">0.1.0 · WoW AI Translation Tool</div></div></div>
+      <div class="grow"><h1>WATT</h1><div class="mono muted" id="about-ver">0.1.0 · WoW AI Translation Tool</div></div>
+      <button class="btn" id="btn-check-update"><svg class="ic sm"><use href="#i-refresh"/></svg>업데이트 확인</button></div>
     <div class="promises">
       <div><span><svg class="ic"><use href="#i-lock"/></svg></span>PC 안에서만 번역</div>
       <div><span><svg class="ic"><use href="#i-eye"/></svg></span>화면만 읽음</div>

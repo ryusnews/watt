@@ -21,6 +21,9 @@ python tools/build.py --no-installer
 - 사용자 데이터(설정·기록·채팅 영역)는 `%LOCALAPPDATA%\WATT` — 제거해도 남긴다.
 - 조용히 설치: `WATT-Setup-0.1.0.exe /VERYSILENT /CURRENTUSER`
 - WATT 가 켜져 있으면 설치·제거가 닫기를 요청한다(AppMutex).
+- 앱 안 업데이트(`watt/update.py`): GitHub 최신 릴리스의 `WATT-Setup-*.exe` 를 받아 GitHub 가 주는 SHA-256 과 맞춘 뒤
+  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /FORCECLOSEAPPLICATIONS /RELAUNCH=1` 로 실행하고 앱은 꺼진다.
+  설치 프로그램은 옛 `_internal` 을 지우고 설치한 뒤 `RELAUNCH=1` 이면 다시 켠다. 릴리스에는 설치 파일 이름을 꼭 `WATT-Setup-<버전>.exe` 로.
 
 ## 알아 둘 것
 - **코드 서명 없음** — 다른 PC 에서 처음 실행하면 "Windows의 PC 보호"(SmartScreen)가 뜬다. 배포하려면 서명 인증서(예: Azure Trusted Signing 월 구독, OV 인증서)가 필요하다.

@@ -18,7 +18,7 @@ from collections import deque
 
 import webview
 
-from . import APP_FULL, APP_NAME, VERSION, chat_region, ocr, paths, screen, settings, system
+from . import APP_FULL, APP_NAME, VERSION, chat_region, ocr, paths, screen, settings, system, update
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 log = logging.getLogger("watt")
@@ -53,6 +53,8 @@ class Api:
         self._games = (0.0, [])
         self._today = (None, None, 0, [])  # (파일 크기, 날짜, 오늘 건수, 최근 소요 초)
         self._cmd_n = 0
+        self._update: dict | None = None
+        self._update_t = 0.0
 
     # ---- 화면에 알리기
     def _emit(self, **ev) -> None:
@@ -266,6 +268,42 @@ class Api:
             return st
         return self._task("pull", work)
 
+    # ---- 업데이트
+    @_logged
+    def check_update(self, force: bool = False) -> dict | None:
+        """새 버전 — 켤 때는 설정이 켜져 있을 때만, 6시간에 한 번. force 면 지금."""
+        if not force:
+            if not settings.load()["update_check"]:
+                return None
+            if self._update and time.time() - self._update_t < 6 * 3600:
+                return self._update
+        try:
+            self._update = update.check()
+            self._update_t = time.time()
+        except Exception as e:  # 인터넷이 없거나 GitHub 이 답하지 않음 — 조용히
+            log.info("update check failed: %s", e)
+            return {"error": "업데이트를 확인하지 못했습니다"} if force else None
+        return self._update
+
+    @_logged
+    def apply_update(self) -> dict:
+        def work(cancel):
+            info = self._update or update.check()
+            if not info.get("newer"):
+                return {"latest": True}
+            if not paths.FROZEN or not info.get("sha256"):  # 개발 실행이거나 확인값이 없으면 페이지만
+                os.startfile(info["page"])
+                return {"opened": info["page"]}
+            setup = update.download(info, lambda d, t: self._emit(type="progress", task="update", done=d, total=t), cancel)
+            log.info("update %s -> %s", VERSION, info["version"])
+            self.stop_all()
+            release_lock()  # 설치 프로그램이 'WATT 가 켜져 있다'며 멈추지 않게
+            update.install(setup)
+            if self._window:
+                self._window.destroy()
+            return {"installing": info["version"]}
+        return self._task("update", work)
+
     @_logged
     def delete_model(self, name: str) -> dict:
         if name in self._busy:
@@ -423,7 +461,7 @@ class Api:
     @_logged
     def open_url(self, url: str) -> bool:
         """정해 둔 주소만 기본 브라우저로 — 앱 창 안에서 링크를 열면 화면이 그 페이지로 바뀐다."""
-        if url not in LINKS:
+        if url not in LINKS and not url.startswith(f"https://github.com/{update.REPO}/"):
             log.warning("blocked url %s", url)
             return False
         os.startfile(url)
@@ -449,9 +487,21 @@ class Api:
             self._window.destroy()
 
 
+_lock = None
+
+
+def release_lock() -> None:
+    """한 번만 켜기 잠금 풀기 — 업데이트 설치 직전."""
+    global _lock
+    if _lock:
+        ctypes.windll.kernel32.CloseHandle(_lock)
+        _lock = None
+
+
 def _single_instance() -> bool:
     """이미 켜져 있으면 그 창을 앞으로 가져오고 False."""
-    ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    global _lock
+    _lock = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         hwnd = ctypes.windll.user32.FindWindowW(None, APP_NAME)
         if hwnd:

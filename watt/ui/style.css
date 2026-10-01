@@ -58,6 +58,10 @@ button { cursor: pointer; }
 .icon-btn { border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; transition: background var(--t), color var(--t); }
 .icon-btn:hover { color: var(--fg); }
 .topbar .help { width: 40px; height: 52px; }
+.update-pill { display: flex; align-items: center; gap: 6px; height: 28px; margin-right: 4px; padding: 0 10px; border: 0; border-radius: 8px;
+  background: var(--teal-soft); color: var(--teal); font: 600 12px var(--mono); transition: background var(--t); }
+.update-pill:hover { background: rgba(59,179,211,.24); }
+.update-pill[disabled] { pointer-events: none; }
 .winbtns { display: flex; height: 100%; border-left: 1px solid var(--line); }
 .winbtns button { width: 48px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; transition: background var(--t); }
 .winbtns button:hover { background: var(--panel); color: var(--fg); }
