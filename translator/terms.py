@@ -197,8 +197,9 @@ def target_name(entry: dict, lang: str) -> str:
     if lang == "en":
         abbr = (entry.get("en_abbr") or [None])[0]
         return f"{abbr} ({entry['en']})" if abbr and abbr.lower() != entry["en"].lower() else entry["en"]
-    if lang in ("zh", "ru") and entry.get(lang):
-        return entry[lang][0]
+    key = "zh" if lang == "tw" else lang  # 번체는 간체 이름을 주고 모델이 번체로 쓴다
+    if key in ("zh", "ru") and entry.get(key):
+        return entry[key][0]
     return entry.get("en") or (entry.get("en_abbr") or [entry["ko"]])[0]
 
 

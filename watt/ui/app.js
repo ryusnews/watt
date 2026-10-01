@@ -173,13 +173,46 @@ function stat(sel, kind, value) {
   $('.dot', el).className = 'dot ' + (kind === 'off' ? '' : kind); $('b', el).textContent = value;
 }
 function setSwitch(sel, v) { $(sel).setAttribute('aria-checked', !!v); }
+// 홈 목록 — 통째로 다시 그리면 갱신마다 모든 줄의 나타나기가 다시 돌아 깜빡였다. 줄마다 열쇠를 두고 새 줄만 위에 끼운다
+const LANG_ORDER = ['en', 'zh', 'ru', 'es', 'de', 'fr', 'pt', 'uk', 'it', 'ja'];
+const LANG_COLOR = ['en', 'zh', 'ru', 'ja', 'es', 'de', 'fr', 'pt', 'uk'];
+const codeOf = (f) => f.tag || f.lang || '';
+function renderLangTabs() {
+  const seen = new Set((S.live.feed || []).map(codeOf).filter(Boolean));
+  if (S.feedLang !== 'all') seen.add(S.feedLang);
+  const codes = [...seen].sort((a, b) => (LANG_ORDER.indexOf(a) + 1 || 99) - (LANG_ORDER.indexOf(b) + 1 || 99));
+  setHTML($('.lang-tabs'), [`<button role="tab" data-lang="all" class="${S.feedLang === 'all' ? 'on' : ''}">전체</button>`]
+    .concat(codes.map((c) => `<button role="tab" data-lang="${esc(c)}" class="mono ${LANG_COLOR.includes(c) ? esc(c) : ''} ${S.feedLang === c ? 'on' : ''}">${esc(c.toUpperCase())}</button>`)).join(''));
+}
+function feedItem(f) {
+  const el = document.createElement('article');
+  el.className = 'item new';
+  el.addEventListener('animationend', () => el.classList.remove('new'), { once: true });
+  setTimeout(() => el.classList.remove('new'), 600);  // 창이 가려져 효과가 돌지 않았을 때도
+  return el;
+}
+function fillItem(el, f) {
+  const c = codeOf(f);
+  const html = `<span class="code ${esc(c)} ${LANG_COLOR.includes(c) ? '' : 'other'}">${esc(c.toUpperCase())}</span>
+      <div>${f.kind === 'ad' && !f.ko ? '<div class="ko ad">광고</div>' : `<div class="ko">${esc(f.ko)}</div>`}<div class="orig"><b>${esc(f.name)}</b>${esc(f.body)}</div></div>
+      <span class="time">${esc((f.t || '').slice(11, 16))}</span>`;
+  if (el._h !== html) { el.innerHTML = html; el._h = html; }
+}
 function renderFeed() {
-  const items = (S.live.feed || []).filter((f) => S.feedLang === 'all' || f.lang === S.feedLang);
-  const showOrig = true;
-  setHTML($('#feed'), items.map((f) => `
-    <article class="item"><span class="code ${esc(f.tag || f.lang)} ${f.tag && !['es', 'de', 'fr', 'pt', 'uk'].includes(f.tag) ? 'other' : ''}">${esc((f.tag || f.lang || '').toUpperCase())}</span>
-      <div>${f.kind === 'ad' && !f.ko ? '<div class="ko ad">광고</div>' : `<div class="ko">${esc(f.ko)}</div>`}${showOrig ? `<div class="orig"><b>${esc(f.name)}</b>${esc(f.body)}</div>` : ''}</div>
-      <span class="time">${esc((f.t || '').slice(11, 16))}</span></article>`).join(''));
+  renderLangTabs();
+  const items = (S.live.feed || []).filter((f) => S.feedLang === 'all' || codeOf(f) === S.feedLang);
+  const box = $('#feed');
+  S.feedEls = S.feedEls || new Map();
+  const keep = new Set();
+  items.forEach((f, i) => {
+    const k = `${f.t}|${f.name}|${f.body}`;
+    keep.add(k);
+    let el = S.feedEls.get(k);
+    if (!el) { el = feedItem(f); S.feedEls.set(k, el); }
+    fillItem(el, f);
+    if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+  });
+  for (const [k, el] of S.feedEls) if (!keep.has(k)) { el.remove(); S.feedEls.delete(k); }
   $('#feed-empty').hidden = items.length > 0;
 }
 
@@ -394,7 +427,7 @@ function renderSettings() {
     : '<option value="">없음</option>');
   $('#set-gamedir').textContent = cur || '-';
   $('#set-gamedir').dataset.tip = cur || '게임 폴더를 지정해 주세요';
-  $$('#set-lang button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_lang));
+  $('#set-lang').value = c.out_lang || 'en';
   $$('#set-mode button').forEach((b) => b.classList.toggle('on', b.dataset.v === c.out_mode));
   $$('#set-ads button').forEach((b) => b.classList.toggle('on', b.dataset.v === (c.ad_filter || 'fold')));
   $$('#set-newest button').forEach((b) => b.classList.toggle('on', b.dataset.v === (c.chat_newest || 'bottom')));
@@ -657,9 +690,12 @@ function bind() {
   };
   $('#sw-orig').onclick = () => { save({ show_original: !S.state.settings.show_original }, true); renderHome(); };
   $('#btn-refind').onclick = async () => { await call('refind'); toast('채팅 영역을 다시 찾습니다'); };
-  $$('.lang-tabs button').forEach((b) => b.addEventListener('click', () => {
-    S.feedLang = b.dataset.lang; $$('.lang-tabs button').forEach((x) => x.classList.toggle('on', x === b)); renderFeed();
-  }));
+  $('.lang-tabs').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-lang]'); if (!b) return;
+    S.feedLang = b.dataset.lang;
+    for (const el of S.feedEls?.values() || []) el.remove();
+    S.feedEls = new Map(); renderFeed();
+  });
   // 환경 설정
   $('#steps').addEventListener('click', (e) => { const b = e.target.closest('[data-step]'); if (b) { S.step = +b.dataset.step; renderSetup(); } });
   $('#step-prev').onclick = () => { S.step = Math.max(0, S.step - 1); renderSetup(); };
@@ -677,7 +713,7 @@ function bind() {
     const g = e.target.closest('[data-game]'); if (g) { S.selGame = g.dataset.game; renderSetup(); save({ game_dir: g.dataset.game }, true); }
   });
   // 번역 설정
-  $('#set-lang').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_lang: b.dataset.v }); renderSettings(); } };
+  $('#set-lang').onchange = (e) => { save({ out_lang: e.target.value }); renderSettings(); };
   $('#set-newest').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ chat_newest: b.dataset.v }); renderSettings(); } };
   $('#set-ads').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ ad_filter: b.dataset.v }); renderSettings(); } };
   $('#set-mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_mode: b.dataset.v }); renderSettings(); } };

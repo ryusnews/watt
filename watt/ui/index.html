@@ -167,9 +167,11 @@
       <section class="panel card">
         <h2><svg class="ic bronze"><use href="#i-kbd"/></svg>보내기</h2>
         <div class="field"><span>언어</span>
-          <div class="seg mono" id="set-lang" role="radiogroup" aria-label="언어">
-            <button data-v="en">EN</button><button data-v="zh">ZH</button><button data-v="ru">RU</button><button data-v="ja">JA</button>
-          </div></div>
+          <label class="select"><select id="set-lang" aria-label="보내기 언어">
+            <option value="en">EN 영어</option><option value="zh">ZH 중국어</option><option value="tw">TW 중국어 번체</option>
+            <option value="ru">RU 러시아어</option><option value="es">ES 스페인어</option><option value="de">DE 독일어</option>
+            <option value="fr">FR 프랑스어</option><option value="pt">PT 포르투갈어</option><option value="ja">JA 일본어</option>
+          </select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field"><span>넣는 곳</span>
           <div class="seg" id="set-mode" role="radiogroup" aria-label="넣는 곳">
             <button data-v="clipboard" data-tip="클립보드에 복사"><svg class="ic sm"><use href="#i-clip"/></svg>클립보드</button>

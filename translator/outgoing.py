@@ -21,8 +21,9 @@ from .llm import chat_json, preload
 
 MODEL = "gemma4:12b"
 MAX_LEN = 255  # WoW 채팅 한 줄 한도
-LANGS = [("en", "영어", "English"), ("zh", "중국어", "Simplified Chinese"), ("ru", "러시아어", "Russian"),
-         ("ja", "일본어", "Japanese")]
+LANGS = [("en", "영어", "English"), ("zh", "중국어", "Simplified Chinese"), ("tw", "중국어 번체", "Traditional Chinese"),
+         ("ru", "러시아어", "Russian"), ("es", "스페인어", "Spanish"), ("de", "독일어", "German"), ("fr", "프랑스어", "French"),
+         ("pt", "포르투갈어", "Brazilian Portuguese"), ("ja", "일본어", "Japanese")]
 HISTORY = paths.LOGS / "outgoing.jsonl"
 SCHEMA = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
@@ -187,8 +188,10 @@ class App:
         logo.pack(side="left", padx=(9, 8))
         self.label = tk.Label(top, text="KO →", fg=tks.FG2, bg=tks.BAR, font=(tks.MONO, 8))
         self.label.pack(side="left")
-        self.lang_label = tk.Label(top, fg=tks.LANG["en"], bg=tks.BAR, font=(tks.MONO, 8, "bold"))
+        self.lang_label = tk.Label(top, fg=tks.LANG["en"], bg=tks.BAR, font=(tks.MONO, 8, "bold"), cursor="hand2")
         self.lang_label.pack(side="left", padx=(4, 0))
+        tk.Label(top, text="▾", fg=tks.FAINT, bg=tks.BAR, font=(tks.MONO, 7)).pack(side="left")
+        self.lang_label.bind("<Button-1>", self.pick_lang)  # 언어가 늘어 Tab 으로 돌기만 하면 번거롭다 — 눌러서 고르기
         help_btn = tk.Label(top, text="?", fg=tks.FAINT, bg=tks.BAR, font=(tks.MONO, 9), cursor="hand2")
         help_btn.pack(side="right", padx=(4, 9))
         help_btn.bind("<Button-1>", self.toggle_help)
@@ -203,14 +206,16 @@ class App:
         self.result.pack(side="left", fill="x", expand=True)
         self.note = tk.Label(row, fg=tks.FAINT, bg=tks.BG, font=(tks.MONO, 8))
         self.note.pack(side="right", anchor="n")
-        self.hint = tk.Label(body, text="Enter 번역 · Tab 언어 · F2 넣는 곳 · Esc 닫기", fg=tks.FAINT, bg=tks.BG,
+        self.hint = tk.Label(body, text="Enter 번역 · Tab · Shift+Tab 언어(위 언어 표시를 눌러 고르기) · F2 넣는 곳 · Esc 닫기",
+                             fg=tks.FAINT, bg=tks.BG,
                              font=(tks.SANS, 8), anchor="w")
         self.hint_on = False
         self.entry.bind("<Return>", self.on_enter)
         self.entry.bind("<Escape>", lambda e: self.hide())
         self.entry.bind("<Tab>", self.on_tab)
+        self.entry.bind("<Shift-Tab>", lambda e: self.on_tab(e, -1))
         self.entry.bind("<F2>", self.on_mode)
-        for w in (top, logo, self.label, self.lang_label, self.mode_label, self.result, self.win):  # 윗줄·결과줄을 끌어 옮기기 — 위치는 저장
+        for w in (top, logo, self.label, self.mode_label, self.result, self.win):  # 윗줄·결과줄을 끌어 옮기기 — 위치는 저장
             w.bind("<ButtonPress-1>", self._drag_start)
             w.bind("<B1-Motion>", self._drag)
             w.bind("<ButtonRelease-1>", self._drag_end)
@@ -222,7 +227,7 @@ class App:
 
     def header(self) -> None:
         lang = self.cfg["lang"]
-        self.lang_label.config(text=lang.upper(), fg=tks.LANG.get(lang, tks.FG))
+        self.lang_label.config(text=lang.upper(), fg=tks.LANG.get("zh" if lang == "tw" else lang, tks.FG))
         self.mode_label.config(text="클립보드" if self.cfg["mode"] == "clipboard" else "입력칸")
 
     def toggle_help(self, _e=None) -> None:
@@ -275,11 +280,27 @@ class App:
         if self.game_hwnd:
             user32.SetForegroundWindow(self.game_hwnd)
 
-    def on_tab(self, _event) -> str:
+    def on_tab(self, _event, step: int = 1) -> str:
         codes = [c for c, _, _ in LANGS]
-        self.cfg["lang"] = codes[(codes.index(self.cfg["lang"]) + 1) % len(codes)]
+        cur = self.cfg["lang"] if self.cfg["lang"] in codes else "en"
+        self.set_lang(codes[(codes.index(cur) + step) % len(codes)])
+        return "break"
+
+    def set_lang(self, code: str) -> None:
+        self.cfg["lang"] = code
         save_config(self.cfg)
         self.header()
+        self.entry.focus_set()
+
+    def pick_lang(self, _event=None) -> str:
+        """언어 표시를 누르면 목록 — 지금 것에 표시."""
+        menu = tk.Menu(self.win, tearoff=False, bg=tks.CTRL, fg=tks.FG, activebackground=tks.TEAL, activeforeground=tks.BG,
+                       font=(tks.SANS, 9), bd=0)
+        for code, ko_name, _ in LANGS:
+            mark = "●" if code == self.cfg["lang"] else "  "
+            menu.add_command(label=f"{mark} {code.upper():3s} {ko_name}", command=lambda c=code: self.set_lang(c))
+        x, y = self.lang_label.winfo_rootx(), self.lang_label.winfo_rooty() + self.lang_label.winfo_height()
+        menu.tk_popup(x, y)
         return "break"
 
     def on_mode(self, _event) -> str:
