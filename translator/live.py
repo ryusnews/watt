@@ -63,6 +63,24 @@ def is_junk(body: str) -> bool:
     return (len(chars) - letters) / max(1, len(chars)) >= 0.35
 
 
+def _outside_links(body: str) -> str:
+    return re.sub(r"\[[^\[\]]*\]", " ", body)
+
+
+def korean_body(body: str) -> bool:
+    """링크를 빼고 한글이 4자 이상이고 라틴보다 많다 — 한국어 글."""
+    s = _outside_links(body)
+    h = len(HANGUL.findall(s))
+    return h >= 4 and h >= len(LATIN.findall(s))
+
+
+def garbled_ko(body: str) -> bool:
+    """링크 밖에 한글 조각 몇 자 + 짧은 라틴 — 깨진 한국어 줄을 영어로 읽은 것('EH Al 여', 'g Ed 니다', 2026-10-01)."""
+    s = re.sub(r"\d+\s*[가-힣]", " ", _outside_links(body))  # '2명' · '1분' 같은 수 단위는 빼고
+    h, la = len(HANGUL.findall(s)), len(LATIN.findall(s))
+    return 0 < h < 4 and la < 6
+
+
 def _letters(text: str) -> int:
     return (len(HANGUL.findall(text)) + len(CJK.findall(text)) + len(LATIN.findall(text))
             + len(CYRILLIC.findall(text)))
@@ -337,7 +355,9 @@ def refine(m: dict, img: np.ndarray, line_h: int, eng) -> dict:
         cands = [c for c in read_variant(eng, crop, k, line_h) if c["body"]]
         if cands:  # 조각 안의 메시지 중 원래 것과 가장 닮은 것
             best = max(cands, key=lambda c: difflib.SequenceMatcher(None, dkey(c["body"]), dkey(m["body"])).ratio())
-            if difflib.SequenceMatcher(None, dkey(best["body"]), dkey(m["body"])).ratio() >= 0.5:
+            # 조각 안에서 메시지가 줄마다 갈리면 마지막 줄만 닮은 후보가 뽑혀 투표에서 앞 줄이 사라졌다
+            # (세 줄짜리 중국어 '到拍賣場…' → '造公式有…' 만, 2026-10-01) — 원래 길이의 70% 이상만
+            if difflib.SequenceMatcher(None, dkey(best["body"]), dkey(m["body"])).ratio() >= 0.5 and                     len(dkey(best["body"])) >= 0.7 * len(dkey(m["body"])):
                 readings.append(best)
     if len(readings) < 3:
         return m
@@ -841,6 +861,8 @@ class Live:
                 continue
             self.msg_no += 1
             m["id"] = f"{self.trace.sid}-{self.msg_no}"
+            if m["lang"] == "en" and korean_body(m["body"]):
+                m["lang"] = "ko"  # 링크 뒤 한국어('[지식인의 부적]혹시 이거 퀘스트 어디서…')를 영어로 판정했다
             if self.first:
                 decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
             elif edge is not None and (i > edge if newest_top else i < edge):
@@ -849,7 +871,7 @@ class Live:
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
-            elif is_junk(m["body"]):
+            elif is_junk(m["body"]) or garbled_ko(m["body"]):
                 decision = "skip_junk"
             elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("
                                     or re.match(r"[^\[]*\]", m["body"])):  # '攻击 ]' — 앞 줄에서 떨어진 링크 끝 조각

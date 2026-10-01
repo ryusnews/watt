@@ -121,7 +121,7 @@
   {"id": "spec-elemental", "type": "spec", "ko": "정기(주술사)", "en": "Elemental", "en_abbr": ["ele"], "zh": ["元素"], "ru": ["элем"]},
   {"id": "role-tank", "type": "role", "ko": "탱커", "ko_alias": ["탱커", "탱"], "en": "tank", "en_abbr": ["tank", "tanks", "T"], "zh": ["坦克", "坦", "T"], "ru": ["танк"]},
   {"id": "role-healer", "type": "role", "ko": "힐러", "ko_alias": ["힐러", "힐"], "en": "healer", "en_abbr": ["heals", "heal", "healer", "healers"], "zh": ["治疗", "奶"], "ru": ["хил", "хилер", "лекарь"]},
-  {"id": "role-dps", "type": "role", "ko": "딜러", "ko_alias": ["딜러", "딜"], "en": "DPS", "en_abbr": ["dps", "dd"], "zh": ["输出", "DPS"], "ru": ["дд", "дпс"]},
+  {"id": "role-dps", "type": "role", "ko": "딜러", "ko_alias": ["딜러", "딜"], "en": "DPS", "en_abbr": ["dps", "dd", "dds"], "zh": ["输出", "DPS"], "ru": ["дд", "дпс"]},
   {"id": "role-melee-dps", "type": "role", "ko": "근접 딜러", "ko_alias": ["근딜", "근접 딜러"], "en": "melee DPS", "en_abbr": ["melee", "mdps"], "zh": ["近战"], "ru": ["мили", "милишник"]},
   {"id": "role-ranged-dps", "type": "role", "ko": "원거리 딜러", "ko_alias": ["원딜", "원거리 딜러"], "en": "ranged DPS", "en_abbr": ["ranged", "rdps"], "zh": ["远程"], "ru": ["рдд", "рейндж"]},
   {"id": "chat-looking-for-recruiting", "type": "chat", "ko": "~ 구함(사람 모집)", "ko_alias": ["구해요", "구함", "모십니다", "모집", "구인"], "en": "looking for (recruiting)", "en_abbr": ["LF", "LFM", "LF1M", "LF2M", "LF3M", "LF4M"], "zh": ["来", "缺", "求"], "ru": ["нужен", "нужна", "нужны", "ищем"]},
