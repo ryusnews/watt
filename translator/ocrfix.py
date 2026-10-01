@@ -89,7 +89,23 @@ def fix_token(tok: str) -> str:
     return _cased(best[1], tok) if best else tok
 
 
+_ROLES = {"dps", "dd", "tank", "tanks", "heal", "heals", "healer", "healers", "more", "left", "spot", "mage", "priest",
+          "rogue", "hunter", "warrior", "warlock", "lock", "druid", "shaman", "paladin", "pally"}
+
+
+def _im(m: re.Match) -> str:
+    """'1m' 뒤에 이름 · 보통 낱말이 오면 I'm(Hi, 1m David · 1m looking), 역할 · 던전이면 그대로(1m dps)."""
+    nxt = m.group(2)
+    low = nxt.lower()
+    if low in _ROLES or any(low == s.lower() for t in terms.TERMS for s in t.get("en_abbr", [])):
+        return m.group(0)
+    return m.group(1) + "I'm " + nxt
+
+
 def fix(text: str) -> str:
     """라틴 낱말만 고친다(한글 · 한자 · 키릴은 그대로). 홀로 선 l · | 는 I."""
+    text = re.sub(r"(?<![A-Za-z])[IlL][fF]\s+1\s?[mM](?![A-Za-z])", "lf1m", text)  # If 1m rfc → lf1m(1명 구함)
+    text = re.sub(r"((?:^|[,.!?]\s*|(?:hi|hey|hello|and|so|but|yes|yeah|ok)\s+))1m\s+([A-Za-z][A-Za-z']*)", _im, text,
+                  flags=re.I)
     text = re.sub(r"(?:(?<=\s)|^)[l|](?=\s+[a-z])", "I", text)
     return TOKEN.sub(lambda m: fix_token(m.group(0)), text)
