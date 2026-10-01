@@ -20,8 +20,11 @@ BASE = ("You translate one World of Warcraft Classic chat message into natural K
         "summ = 소환). Use the official Korean client names for dungeons, zones and classes. "
         "Prices 20s / 5g / 50c = 20실버, 5골드, 50코퍼. "
         "Never add words or requests that are not in the message; if parts are unreadable OCR noise, translate only the "
-        "readable parts. Keep player names, numbers and [bracketed links] unchanged; Korean text in [brackets] is an in-game "
-        "quest/item link already shown in Korean — copy it exactly. Put only the translation in 'ko'.")
+        "readable parts. Keep player names, numbers and [bracketed] text as units. Put only the translation in 'ko'.")
+# 글에 [ 가 있을 때만 — 늘 넣으면 링크가 없는 글의 용어(血色)까지 괄호를 씌우고 사전 용어를 놓쳤다(2026-10-01)
+LINK_RULES = ("[Bracketed text] is an item, quest or NPC link in the writer's client language: translate each one as a single "
+              "[bracketed] unit in place — the official Korean client name if you know it, otherwise a plain transliteration "
+              "(never a different place or item); Korean ones stay exactly as written.")
 # 글자 종류에 따라 붙이는 규칙 — 전부 넣으면 870토큰이 되어 게임 중 번역이 3~7초로 느려졌다(2026-10-01)
 LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/role and wants to JOIN a group "
                "(Tank lfg WC = 탱커가 통곡의 동굴 파티를 찾음); 'LF/LFM <role>' = recruiting that role. "
@@ -49,6 +52,8 @@ def system_prompt(terms: dict, text: str = "", chinese: bool = False) -> str:
         parts.append(CHINESE_RULES)
     if not text or _CYR.search(text):
         parts.append(CYRILLIC_RULES)
+    if "[" in text:
+        parts.append(LINK_RULES)
     s = " ".join(parts)
     if terms:
         s += " Game terms in this message (original = Korean meaning): " + "; ".join(f"{k} = {v}" for k, v in terms.items()) + "."
@@ -79,13 +84,34 @@ def normalize_ocr(text: str) -> str:
     return text
 
 
+def fix_terms(out: str, hints: dict) -> str:
+    """번역에 사전 용어가 한 글자 틀리게 들어갔으면 바로잡는다(통곡의 동율 → 통곡의 동굴, 성난불킬 → 성난불길).
+    알려 준 영어 약어가 번역에 그대로 남았으면 한국어 이름으로(TB 소환 → 썬더 블러프 소환)."""
+    for surface, name in hints.items():
+        core = name.split("(")[0].strip()
+        if (surface.isascii() and surface.isupper() and len(surface) >= 2 and re.search(r"[가-힣]", core)
+                and core not in out and "~" not in core):
+            out = re.sub(rf"(?<![A-Za-z]){re.escape(surface)}(?![A-Za-z])", core, out, count=1)
+    for name in set(hints.values()):
+        core = name.split("(")[0].strip()
+        if len(core) < 3 or core in out or not re.search(r"[가-힣]", core):
+            continue
+        n = len(core)
+        for i in range(len(out) - n + 1):
+            seg = out[i:i + n]
+            if sum(a != b for a, b in zip(seg, core)) == 1 and seg[0] == core[0]:
+                out = out[:i] + core + out[i + n:]
+                break
+    return out
+
+
 def translate(text: str, model: str = MODEL, chinese: bool = False) -> tuple[str, float]:
     """chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
     한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
     text = normalize_ocr(text)
     terms = matched_terms(text, chinese)
     out, secs = chat_json(model, system_prompt(terms, text, chinese), text, SCHEMA)
-    return out.get("ko", "").strip(), secs
+    return fix_terms(out.get("ko", "").strip(), terms), secs
 
 
 def main() -> int:

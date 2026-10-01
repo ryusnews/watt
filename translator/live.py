@@ -736,7 +736,8 @@ class Live:
                 decision = "skip_short"
             elif is_junk(m["body"]):
                 decision = "skip_junk"
-            elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("):
+            elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("
+                                    or re.match(r"[^\[]*\]", m["body"])):  # '攻击 ]' — 앞 줄에서 떨어진 링크 끝 조각
                 decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
