@@ -190,7 +190,8 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         k, z, e, r = by(ko), by(zh), by(en), by(ru)
         # 퀘스트 · 아이템 링크는 보는 사람의 클라이언트 언어(한국어)로 보인다 — 보낸 사람 언어와 무관하므로 언어 판정에서 뺀다.
         # 'LFM [늙은 불꽃눈]' 을 한국어로 판정해 건너뛰거나, 중국어 엔진이 링크를 가짜 한자([旨吕罟])로 읽어 중국어로 갈랐다(2026-10-01)
-        links = HANGUL_LINK.findall(body_of(k["t"])) if k else []
+        links = [s for s in HANGUL_LINK.findall(body_of(k["t"])) if k and
+                 len(HANGUL.findall(s)) >= 0.5 * len(re.findall(r"[^\W\d_]", s))] if k else []  # 한글이 절반↑ — [니on'apyK] 는 아님
 
         def ft(c):
             b_ = body_of(c["t"])
@@ -198,7 +199,8 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
         feat = {"hangul": len(HANGUL.findall(ft(k))) if k else 0, "ko": bool(k and looks_korean(ft(k))),
                 "zh": bool(z and looks_chinese(ft(z))), "ru": bool(r and looks_russian(ft(r))),
                 "en_garbled": bool(e and english_garbled(ft(e)))}
-        if feat["ko"]:
+        ko_mixed = k and feat["hangul"] >= 4 and feat["hangul"] >= 0.3 * _letters(ft(k))  # 한국어 + 영어(로데론폐허 딜 / LFM DPS)
+        if feat["ko"] or ko_mixed:
             chosen, lang = k, "ko"
         elif feat["zh"]:
             chosen, lang = z, "zh"
@@ -216,7 +218,8 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
                     text = text.replace(a_, b_, 1)
             elif lang == "en":  # 영어 엔진이 링크를 빠뜨렸으면(LFM [ … ] → LFM) 한국어 엔진 줄째로(라틴도 읽는다)
                 text = k["t"]
-        row = {"y": chosen["y"], "x": min(l["x"] for l in row), "text": text, "lang": lang, "feat": feat,
+        xs = sorted(l["x"] for l in row)  # 가운데 값 — 한 엔진이 채팅창 왼쪽 아이콘을 글자로 읽어 x 가 튀어도(EllesmereUI)
+        row = {"y": chosen["y"], "x": xs[(len(xs) - 1) // 2], "text": text, "lang": lang, "feat": feat,
                "cand": {"en": e and e["t"], "ko": k and k["t"], "zh": z and z["t"], "ru": r and r["t"]}}  # 추적용
         if not parse_header(text):  # 고른 엔진이 머리를 깨뜨렸으면 머리를 제대로 읽은 다른 엔진 것을 따로 둔다
             row["alt_header"] = next((c["t"] for c in (e, k, r, z) if c and (h := parse_header(c["t"], True)) and h["ch"]),
@@ -274,7 +277,9 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     # 왼쪽 여백 = 머리를 읽은 줄들의 왼쪽 끝. 그냥 가장 왼쪽 줄로 하면 채팅창 왼쪽 버튼(스피커 아이콘)을 읽은
     # 부스러기가 기준이 돼, 메시지 첫 줄을 앞 메시지의 뒷줄로 붙였다(2026-10-01, 채팅창을 키웠을 때)
     heads = [r["x"] for r in rows if parse_header(r["text"], True) or r.get("alt_header")]
-    margin = min(heads) if heads else min((r["x"] for r in rows), default=0)
+    heads.sort()
+    # 가운데 값 — 아이콘 부스러기로 x 가 튄 머리 줄 하나가 기준을 끌어가지 않게(가장 왼쪽 값이면 18 로 끌려가 시스템 줄이 붙었다)
+    margin = heads[len(heads) // 2] if heads else min((r["x"] for r in rows), default=0)
     for i, r in enumerate(rows):
         at_margin = abs(r["x"] - margin) < line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
         h = parse_header(r["text"], at_margin)

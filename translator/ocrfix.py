@@ -112,8 +112,14 @@ def _im(m: re.Match) -> str:
     return m.group(1) + "I'm " + nxt
 
 
+# 중국어 OCR 이 자주 헷갈리는 글자 — 게임 용어로 확인된 것만(附魔 → 咐魔, 2026-10-01 정답 표본)
+ZH_FIXES = [("咐魔", "附魔")]
+
+
 def fix(text: str) -> str:
-    """라틴 낱말만 고친다(한글 · 한자 · 키릴은 그대로). 홀로 선 l · | 는 I."""
+    """라틴 낱말을 고친다(한글 · 키릴은 그대로). 홀로 선 l · | 는 I. 중국어는 확인된 글자 쌍만."""
+    for a, b in ZH_FIXES:
+        text = text.replace(a, b)
     text = re.sub(r"(?<![A-Za-z])[IlL][fF]\s+1\s?[mM](?![A-Za-z])", "lf1m", text)  # If 1m rfc → lf1m(1명 구함)
     text = re.sub(r"((?:^|[,.!?]\s*|(?:hi|hey|hello|and|so|but|yes|yeah|ok)\s+))1m\s+([A-Za-z][A-Za-z']*)", _im, text,
                   flags=re.I)
