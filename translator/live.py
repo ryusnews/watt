@@ -38,10 +38,16 @@ CYR_DISTINCT = re.compile(r"[БГДЖЗИЙЛФЦЧШЩЪЫЬЭЮЯбвгдёж�
 TAGS = re.compile(r"<[^>]*>|\[[^\]]*\]")  # <길드명> [이름] — 라틴 길드명이 키릴 비율을 끌어내리지 않게
 
 
+CYR_WORD = re.compile(r"[Ѐ-ӿ]{3,}")
+
+
 def looks_russian(text: str) -> bool:
+    """키릴 60%↑ + 러시아어에만 있는 글자 1개↑ + 키릴 낱말(3자↑) 2개↑. 마지막 조건: 러시아어 엔진이 짧은 영어를
+    닮은 키릴로 읽은 줄(LF3M DPS DM → Г-ЗМ DPS ОМ, any → апу)을 러시아어로 보지 않게(2026-10-01 모니터링)."""
     core = TAGS.sub(" ", text)
     cyr, lat = len(CYRILLIC.findall(core)), len(LATIN.findall(core))
-    return cyr >= 3 and cyr >= 0.6 * (cyr + lat) and len(CYR_DISTINCT.findall(core)) >= 2
+    return (cyr >= 3 and cyr >= 0.6 * (cyr + lat) and len(CYR_DISTINCT.findall(core)) >= 1
+            and len(CYR_WORD.findall(core)) >= 2)
 
 
 def is_junk(body: str) -> bool:
