@@ -91,7 +91,7 @@ HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJ|]?\s*)?[\[
 
 # 줄 앞에 무엇이 붙든(기본 채팅 [1. 공개 - 오그리마] · 시간 표시 · 애드온) 마지막 [이름]: 을 머리로 —
 # 왼쪽 여백에서 시작하는 줄에만 쓴다(들여쓴 뒷줄의 [아이템]: 을 머리로 오인하지 않게). #10 의 첫 단계
-GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ]"
+GENERIC = re.compile(r"^(?P<pre>.{0,60}?)[\[〔(]\s*(?P<name>[^\[\]〔〕]{1,32}?)\s*[\]〕)lJ1I|]"
                      r"\s*(?P<kind>님(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：]\s*(?P<body>.*)$")
 PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개] · [6] — [12:30] 같은 시간은 아님
 
@@ -197,9 +197,12 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     msgs, cur, last_y = [], None, None
     # 들여쓰기는 채팅창 왼쪽 여백 기준 — 머리 줄 x 기준이면, OCR 이 [6] 을 빠뜨려 머리 줄이 오른쪽에서 시작할 때
     # 들여쓴 뒷줄이 떨어져 나간다(2026-09-30 frame 122: 3줄 광고가 첫 줄만 번역)
-    margin = min((r["x"] for r in rows), default=0)
+    # 왼쪽 여백 = 머리를 읽은 줄들의 왼쪽 끝. 그냥 가장 왼쪽 줄로 하면 채팅창 왼쪽 버튼(스피커 아이콘)을 읽은
+    # 부스러기가 기준이 돼, 메시지 첫 줄을 앞 메시지의 뒷줄로 붙였다(2026-10-01, 채팅창을 키웠을 때)
+    heads = [r["x"] for r in rows if parse_header(r["text"], True) or r.get("alt_header")]
+    margin = min(heads) if heads else min((r["x"] for r in rows), default=0)
     for i, r in enumerate(rows):
-        at_margin = r["x"] < margin + line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
+        at_margin = abs(r["x"] - margin) < line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
         h = parse_header(r["text"], at_margin)
         body = h["body"] if h else None
         if not h and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 ]: 뒤)으로
