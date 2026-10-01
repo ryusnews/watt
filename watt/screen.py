@@ -92,6 +92,9 @@ def capture(x: int, y: int, w: int, h: int) -> np.ndarray:
 def capture_window(win: dict) -> np.ndarray | None:
     """게임 창 자체의 출력(클라이언트 영역) — 다른 창(WATT · 통역 창 · 브라우저)이 가려도 게임 화면을 받는다.
     PrintWindow(PW_CLIENTONLY | PW_RENDERFULLCONTENT): DirectX 창도 DWM 이 그린 내용으로 준다. 실패하거나 까맣면 None."""
+    img = _wgc_grab(win, 0, 0, win["w"], win["h"])
+    if img is not None:
+        return img
     hwnd, w, h = win["hwnd"], win["w"], win["h"]
     dc = user32.GetDC(hwnd)
     mdc = gdi32.CreateCompatibleDC(dc)
@@ -123,14 +126,43 @@ def covered(win: dict, x: int, y: int, w: int, h: int) -> bool:
 
 
 _game = {"win": None, "t": 0.0}
+_wgc = {"cap": None, "key": None, "off": False}
+
+
+def _wgc_grab(win: dict, x: int, y: int, w: int, h: int) -> np.ndarray | None:
+    """Windows 그래픽 캡처(#45) — 창 클라이언트 (x, y, w, h). 안 되면 None(이후 GDI 로)."""
+    import logging
+    import time
+    if _wgc["off"]:
+        return None
+    key = (win["hwnd"], win["w"], win["h"])
+    try:
+        if _wgc["key"] != key:  # 게임을 다시 켰거나 창 크기가 바뀜
+            if _wgc["cap"]:
+                _wgc["cap"].close()
+            from . import wgc
+            _wgc["cap"], _wgc["key"] = wgc.WindowCapture(win["hwnd"]), key
+        for _ in range(10):  # 시작 직후에는 첫 프레임을 잠깐 기다린다
+            img = _wgc["cap"].grab(x, y, w, h)
+            if img is not None:
+                return img
+            time.sleep(0.03)
+    except Exception as e:  # 지원하지 않는 Windows · 드라이버 — 지금 방식으로
+        logging.getLogger("watt").warning("Windows 그래픽 캡처를 쓸 수 없어 GDI 로: %s", e)
+        _wgc["off"] = True
+    return None
 
 
 def capture_game(x: int, y: int, w: int, h: int) -> np.ndarray:
-    """채팅 영역 캡처 — 보이면 화면에서(빠름), 다른 창이 가리면 게임 창 출력에서 잘라 온다."""
+    """채팅 영역 캡처 — Windows 그래픽 캡처(GPU 에서, ~1ms, 가려져도 게임 화면). 안 되면 화면(GDI) · 게임 창 출력."""
     import time
     if time.monotonic() - _game["t"] > 2:
         _game["win"], _game["t"] = find_game_window(), time.monotonic()
     win = _game["win"]
+    if win:
+        img = _wgc_grab(win, x - win["x"], y - win["y"], w, h)
+        if img is not None:
+            return img
     if win and covered(win, x, y, w, h):
         full = capture_window(win)
         if full is not None:
