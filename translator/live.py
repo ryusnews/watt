@@ -14,6 +14,8 @@ import threading
 import time
 import tkinter as tk
 from collections import Counter, deque
+
+import numpy as np
 from pathlib import Path
 
 from watt import chat_region, paths, screen, settings
@@ -305,6 +307,51 @@ def best_name(row: dict, current: str) -> str:
     if n >= 3 and p >= 0.9:
         return names["en"]
     return current
+
+
+def read_variant(eng, img: np.ndarray, k: float, line_h: int) -> list[dict]:
+    """조각 하나를 k 배로 읽어 메시지로(좌표는 조각 기준 원래 크기)."""
+    from watt import screen
+    res = eng.recognize(screen.upscale2(img) if k == 2 else screen.upscale(img, k))
+    lines = {lg: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w")} for l in eng.lines_of(v, k)]
+             for lg, v in res.items()}
+    rows = pick_lines(lines, line_h)
+    return build_messages(rows, line_pitch(rows, line_h))
+
+
+REFINE = ((2.5, 0), (3, 0), (2, 1))  # (배율, 위로 몇 픽셀 밀기) — 같은 픽셀이면 OCR 은 늘 같게 읽으므로 조금씩 바꿔 읽는다
+
+
+def refine(m: dict, img: np.ndarray, line_h: int, eng) -> dict:
+    """새 메시지의 줄만 잘라 배율 · 위치를 바꿔 몇 번 더 읽고 투표 — 이름은 가장 많이 나온 것, 본문은 다른 읽기와 가장 닮은 것.
+    화면마다 附魔 · 咐魔, 埋伏十面 · 哩伏十面 처럼 번갈아 읽던 것을 한 번에 가린다(2026-10-01)."""
+    ys = [r["y"] for r in m["rows"]]
+    top, bot = max(0, min(ys) - int(line_h * 0.35)), min(img.shape[0], max(ys) + int(line_h * 1.25))
+    if bot - top < line_h:
+        return m
+    readings = [m]
+    for k, dy in REFINE:
+        crop = img[max(0, top - dy):bot - dy]
+        cands = [c for c in read_variant(eng, crop, k, line_h) if c["body"]]
+        if cands:  # 조각 안의 메시지 중 원래 것과 가장 닮은 것
+            best = max(cands, key=lambda c: difflib.SequenceMatcher(None, dkey(c["body"]), dkey(m["body"])).ratio())
+            if difflib.SequenceMatcher(None, dkey(best["body"]), dkey(m["body"])).ratio() >= 0.5:
+                readings.append(best)
+    if len(readings) < 3:
+        return m
+
+    def medoid(vals: list[str]) -> str:
+        return max(vals, key=lambda v: sum(difflib.SequenceMatcher(None, dkey(v), dkey(o)).ratio() for o in vals))
+    names = [r["name"] for r in readings if r["name"]]
+    langs = Counter(r["lang"] for r in readings)
+    out = dict(m)
+    out["body"] = medoid([r["body"] for r in readings])
+    if names:
+        out["name"] = medoid(names)
+    if langs.most_common(1)[0][1] > len(readings) / 2:
+        out["lang"] = langs.most_common(1)[0][0]
+    out["readings"] = len(readings)
+    return out
 
 
 def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -> list[dict]:
@@ -785,6 +832,11 @@ class Live:
                 decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
+            if decision == "queued" and self.ocr.last_img is not None:  # 번역할 메시지만 — 배율 · 위치를 바꿔 다시 읽고 투표
+                try:
+                    m.update(refine(m, self.ocr.last_img, lh, self.ocr.ocr))
+                except Exception as e:  # 다시 읽기가 안 되면 처음 읽은 그대로
+                    self.trace.write("error", where="refine", msg=f"{type(e).__name__}: {e}")
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
                 ad = self.ads.check(m["name"], m["body"])
                 m["kind"], m["ad"] = ad["kind"], ad
@@ -800,6 +852,7 @@ class Live:
                 queued.append(m)
             events.append(("msg", {"id": m["id"], "ch": m["ch"], "name": m["name"], "lang": m["lang"], "body": m["body"],
                                    "decision": decision, "near_sim": round(sim, 3), "kind": m.get("kind"),
+                                   "readings": m.get("readings"),
                                    "ad": m.get("ad"),
                                    "rows": [{"lang": x["lang"], "x": x["x"], "y": x["y"], "feat": x["feat"], "cand": x["cand"]}
                                             for x in m["rows"]]}))

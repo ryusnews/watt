@@ -208,6 +208,28 @@ def upscale2(bgra: np.ndarray) -> np.ndarray:
     return np.concatenate([out, np.full(out.shape[:2] + (1,), 255, np.uint8)], axis=2)
 
 
+def upscale(bgra: np.ndarray, k: float) -> np.ndarray:
+    """k 배 확대(쌍삼차) — 한 메시지를 배율을 바꿔 다시 읽을 때(live.refine)."""
+    def axis(arr, ax):
+        n = arr.shape[ax]
+        m = int(round(n * k))
+        src = (np.arange(m) + 0.5) / k - 0.5
+        i0 = np.floor(src).astype(int)
+        t = src - i0
+        d = np.abs(np.stack([1 + t, t, 1 - t, 2 - t], -1))
+        w = np.where(d <= 1, 1.5 * d ** 3 - 2.5 * d ** 2 + 1, -0.5 * d ** 3 + 2.5 * d ** 2 - 4 * d + 2)
+        p = np.pad(arr, [(2, 2) if i == ax else (0, 0) for i in range(arr.ndim)], mode="edge")
+        out = 0
+        for j in range(4):
+            shape = [1] * arr.ndim
+            shape[ax] = m
+            out = out + np.take(p, i0 + 1 + j, axis=ax) * w[:, j].reshape(shape)
+        return out
+    f = bgra[..., :3].astype(np.float32)
+    out = np.clip(axis(axis(f, 0), 1), 0, 255).astype(np.uint8)
+    return np.concatenate([out, np.full(out.shape[:2] + (1,), 255, np.uint8)], axis=2)
+
+
 # ---- 바뀌었나 — 밝은 점(글자) 이진 서명. 커서 깜빡임·배경 조금 바뀜은 무시(2026-09-30: 픽셀 해시는 매번 '바뀜')
 def text_sig(bgra: np.ndarray, sx: int = 3, sy: int = 2, thr: int = 110) -> np.ndarray:
     return luminance(bgra[::sy, ::sx]) > thr

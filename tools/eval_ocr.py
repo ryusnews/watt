@@ -100,6 +100,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gt", default=str(ROOT / "eval" / "private" / "gt.json"))
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--refine", action="store_true", help="메시지마다 배율 · 위치를 바꿔 다시 읽고 투표(live.refine)")
     a = ap.parse_args()
     gt_path = Path(a.gt)
     frames = json.loads(gt_path.read_text(encoding="utf-8"))["frames"]
@@ -107,7 +108,14 @@ def main() -> int:
     n = found = lang_ok = name_ok = 0
     body_f, body_all, ms_all, misses = [], [], [], []
     for rel, gt in frames.items():
-        msgs, ms = read_frame(eng, load_png(gt_path.parent / rel))
+        img = load_png(gt_path.parent / rel)
+        msgs, ms = read_frame(eng, img)
+        if a.refine:
+            t0 = time.perf_counter()
+            hs = [r["y"] for m in msgs for r in m["rows"]]
+            lh = live.line_pitch([{"y": y} for y in sorted(set(hs))], 25)
+            msgs = [live.refine(m, img, lh, eng) if m["body"] else m for m in msgs]
+            ms += (time.perf_counter() - t0) * 1000 / max(1, len(msgs))  # 메시지 하나당 더 든 시간
         ms_all.append(ms)
         for g, m in match(gt, msgs):
             n += 1
