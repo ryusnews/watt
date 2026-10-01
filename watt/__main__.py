@@ -65,7 +65,7 @@ def selftest() -> int:
         import numpy as np
         from watt import aipack, ocr as o
         st = aipack.status()
-        langs = [lg for lg in ("ko", "zh", "ru") if st["models"][lg]]
+        langs = [lg for lg in ("ko", "zh", "ru", "latin") if st["models"][lg]]
         if not (st["runtime"] and st["models"]["det"] and langs):
             return "없음"
         eng = o.Ocr()

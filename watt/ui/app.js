@@ -395,7 +395,7 @@ function renderSettings() {
 }
 
 /* AI 글자 인식 — 언어마다 켜기(켤 때 그 모델만 받기) */
-const AI_NAME = { ko: '한국어 이름 · 글', zh: '중국어 · 영어 본문(작은 글꼴에서 g·q 를 덜 헷갈림)', ru: '러시아어 · 우크라이나어' };
+const AI_NAME = { ko: '한국어 이름 · 글', zh: '중국어 · 영어 본문(작은 글꼴에서 g·q 를 덜 헷갈림)', ru: '러시아어 · 우크라이나어', latin: '스페인어 · 독일어 · 프랑스어 등 악센트(ñ · ü · é) — 영어로 보이는 줄은 그대로' };
 async function renderAi() {
   const a = S.ai = await call('get_ai');
   const p = S.progress.ai, run = p || (S.state && S.state.busy.includes('ai'));
@@ -796,9 +796,9 @@ function mockApi() {
     set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
     get_ai: () => ok({ langs: settings.ai_langs || [], gpu: settings.ai_gpu !== false, runtime: (settings.ai_langs || []).length > 0,
-      models: { det: true, ko: false, zh: (settings.ai_langs || []).includes('zh'), ru: false }, active: settings.ai_langs || [], active_gpu: true, error: null, disk: (settings.ai_langs || []).length ? 96e6 : 0,
-      sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092 } }),
-    set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
+      models: { det: true, ko: false, zh: (settings.ai_langs || []).includes('zh'), ru: false, latin: false }, active: settings.ai_langs || [], active_gpu: true, error: null, disk: (settings.ai_langs || []).length ? 96e6 : 0,
+      sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092, latin: 7904513 } }),
+    set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru', 'latin'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
     remove_ai: () => ok({}),
     resume: () => ok({}), toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),

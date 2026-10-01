@@ -34,9 +34,11 @@ MODELS = {  # 이름: (파일, 주소, SHA256, 크기)
            "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884", 21234383),
     "ru": ("cyrillic_PP-OCRv5_rec_mobile.onnx", _MS + "PP-OCRv5/rec/cyrillic_PP-OCRv5_rec_mobile.onnx",
            "90f761b4bfcce0c8c561c0cb5c887b0971d3ec01c32164bdf7374a35b0982711", 8074092),
+    "latin": ("latin_PP-OCRv5_rec_mobile.onnx", _MS + "PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx",
+              "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a", 7904513),
 }
-LANGS = ("ko", "zh", "ru")  # 켤 수 있는 언어 — 영어는 Windows OCR
-ENGINE_KEY = {"ko": "ko", "zh": "zh-Hans-CN", "ru": "ru-RU"}  # 바꿔 낄 Windows 엔진 자리
+LANGS = ("ko", "zh", "ru", "latin")  # 켤 수 있는 언어 — 영어는 Windows OCR
+ENGINE_KEY = {"ko": "ko", "zh": "zh-Hans-CN", "ru": "ru-RU", "latin": "latin"}  # latin: Windows 자리가 없는 새 자리(영어 본문)  # 바꿔 낄 Windows 엔진 자리
 
 AI_DIR = paths.DATA / "ai"
 RUNTIME_DIR = AI_DIR / "runtime"
@@ -51,7 +53,8 @@ _LATIN = re.compile(r"[A-Za-z]")
 # 한국어 엔진은 한자를 한자로, 러시아어 엔진은 키릴을 키릴로 읽는다. 못 알아본 줄은 Windows 것이 그대로 남는다(ocr.read_lines)
 NEED = {"ko": lambda h: len(_HANGUL.findall(h.get("ko", ""))) >= 2,
         "zh": lambda h: bool(_HAN.search(h.get("ko", ""))) or len(_LATIN.findall(h.get("en-US", ""))) >= 6,  # 영어 본문도(live.pick_lines)
-        "ru": lambda h: len(_CYR.findall(h.get("ru-RU", ""))) >= 3}
+        "ru": lambda h: len(_CYR.findall(h.get("ru-RU", ""))) >= 3,
+        "latin": lambda h: len(_LATIN.findall(h.get("en-US", ""))) >= 6}
 
 
 def import_runtime():

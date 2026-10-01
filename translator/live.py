@@ -7,6 +7,7 @@ python -m watt --role live           # 채팅 영역 자동 찾기 → 0.5초마
 """
 import ctypes
 import difflib
+import unicodedata
 import json
 import queue
 import re
@@ -87,6 +88,39 @@ def garbled_ko(body: str) -> bool:
     s = re.sub(r"\d+\s*[가-힣]", " ", _outside_links(body))  # '2명' · '1분' 같은 수 단위는 빼고
     h, la = len(HANGUL.findall(s)), len(LATIN.findall(s))
     return 0 < h < 4 and la < 6
+
+
+# 라틴 문자 줄의 언어 짐작 — 흔한 낱말로(한 화면 안에서 줄마다 영어 · 스페인어 · 독일어 …가 섞인다). 영어가 아니면 그 줄은
+# 라틴 모델(악센트)로 읽은 것을 쓴다. 짧은 줄(낱말 2개 미만)은 영어로 둔다
+STOPWORDS = {
+    "en": "the and you for are is to of in it that this with have can lf lfg lfm wts wtb any anyone just get my me i",
+    "es": "que de la el los las para por con una uno ya hay quien busca busco somos estamos nuestro gremio jugadores y en es quiero hacer ahora alguien tengo vamos",
+    "de": "und der die das für mit ist nicht ich wir sucht suchen noch auch auf bei gilde spieler ein eine zu jemand hat haben heute",
+    "fr": "le la les des pour est une avec pas qui nous vous sur dans guilde joueurs recrute cherche ce et quelqu soir je tu on",
+    "pt": "que de para com uma não você voce nós nos estamos procurando guilda jogadores é e o os quer fazer agora comigo alguem tem",
+    "it": "che di per con una non sono gilda giocatori cerchiamo il gli della",
+}
+_SW = {k: set(v.split()) for k, v in STOPWORDS.items()}
+
+
+def guess_latin(text: str) -> str:
+    """'en' · 'es' · 'de' · 'fr' · 'pt' · 'it' 중 흔한 낱말이 가장 많이 맞는 것(동점 · 짧으면 en)."""
+    words = re.findall(r"[a-z]+", _plain(text))
+    if len(words) < 2:
+        return "en"
+    score = {k: sum(w in s for w in words) for k, s in _SW.items()}
+    best = max(score, key=lambda k: (score[k], k == "en"))
+    return best if best != "en" and score[best] >= 2 and score[best] > score["en"] else "en"
+
+
+def _plain(s: str) -> str:
+    """악센트를 뗀 소문자(é → e)."""
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+
+
+def _accents(s: str) -> int:
+    return sum(1 for ch in s if ch.isalpha() and not ch.isascii() and unicodedata.category(ch).startswith("L")
+               and "LATIN" in unicodedata.name(ch, ""))
 
 
 def _letters(text: str) -> int:
@@ -232,6 +266,7 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
     """엔진들의 같은 위치 줄 중 그럴듯한 것: 한글 → ko, 한자 → zh, 진짜 러시아어(키릴 60%↑) → ru, 그 밖 → en."""
     en, ko, zh, ru = (lines.get("en-US") or [], lines.get("ko") or [], lines.get("zh-Hans-CN") or [],
                       lines.get("ru-RU") or [])
+    lat = lines.get("latin") or []  # AI 라틴(유럽어) 모델 — 영어 · 스페인어 · 독일어 … 본문(악센트)
     anchors = sorted(en + ko + zh + ru, key=lambda l: l["y"])
     rows: list[list[dict]] = []
     for l in anchors:  # 세로 위치로 같은 줄 묶기
@@ -279,7 +314,18 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
             chosen, lang = r, "ru"  # 영어 엔진이 깨끗하게 읽은 줄은 영어로 둔다(짧은 영어가 가짜 키릴로 읽힐 때)
         else:
             chosen, lang = (e or k or z or r), "en"  # 러시아어 엔진만 찾은 줄도 있다
-        if lang == "en" and z and z.get("ai"):
+        la = next((q for q in lat if abs(q["y"] - chosen["y"]) <= line_h * 0.5), None) if lat and lang == "en" else None
+        if la and z and z.get("ai"):
+            # 라틴 모델과 중국어 모델이 같은 줄을 비슷하게 읽었으면 악센트가 적은 쪽 — 둘 다 영어 대문자에 없는 악센트를
+            # 붙인다(THÉ · BUTTOÑ / STARTIÑĠ · mainteñance). 크게 다르면 중국어 모델 것(정답 표본에서 라틴만 쓰면 99.3 → 98.8%)
+            za, lb = body_of(z["t"]), body_of(la["t"])
+            if guess_latin(za) != "en" or guess_latin(lb) != "en":
+                chosen = la  # 유럽어 줄 — 악센트(ñ · ü · é)는 라틴 모델이 바르게 읽는다
+            elif difflib.SequenceMatcher(None, _plain(za), _plain(lb)).ratio() >= 0.9 and _accents(lb) < _accents(za):
+                chosen = la
+            elif not CJK.search(za) and len(LATIN.findall(za)) >= 0.7 * max(1, _letters(za)):
+                chosen = z
+        elif lang == "en" and z and z.get("ai"):
             zb = body_of(z["t"])
             if zb and not CJK.search(zb) and len(LATIN.findall(zb)) >= 0.7 * max(1, _letters(zb)):
                 # 영어 본문은 AI 중국어 모델 것으로(머리는 그대로 한국어 엔진) — Windows 영어 엔진은 작은 글꼴에서 3배로 읽어도
