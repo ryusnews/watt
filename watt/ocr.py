@@ -203,8 +203,15 @@ def shift_of(old: np.ndarray, new: np.ndarray, min_iou: float = 0.5) -> int | No
 def gap_above(img: np.ndarray, y: int, line_h: int) -> int:
     """y 에서 위로 올라가며 글자가 없는 가로줄(줄 사이 빈 곳) — 띠를 거기서 잘라야 글자 줄이 반쪽으로 잘리지 않는다."""
     rows = (screen.luminance(img) > 110).sum(1)
-    for yy in range(min(y, len(rows) - 1), max(0, y - line_h * 2), -1):
+    lo, hi = max(0, y - line_h * 2), min(y, len(rows) - 1)
+    for yy in range(hi, lo, -1):
         if rows[yy] == 0:
+            return yy
+    # 작은 글꼴은 줄 사이가 좁아 g · y 꼬리가 아랫줄에 닿아 완전히 빈 줄이 없다 — 가장 옅은 줄(글자 점 몇 개)에서 자른다.
+    # 못 자르면 전체를 다시 읽어 Prat 에서 화면의 1/5 이 3.6초씩 걸렸다(2026-10-01)
+    if hi > lo:
+        yy = lo + 1 + int(np.argmin(rows[lo + 1:hi + 1]))
+        if rows[yy] <= max(4, img.shape[1] // 100):
             return yy
     return -1  # 빈 곳을 못 찾으면 전체 다시 읽기
 
