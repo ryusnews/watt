@@ -282,6 +282,13 @@ def pick_lines(lines: dict, line_h: int) -> list[dict]:
             rows[-1].append(l)
         else:
             rows.append([l])
+    # 한 엔진만 읽은 줄이 위아래 줄과 같은 글이면 버린다 — AI 한국어가 아랫줄을 8px 위에 읽어 '쇠 [11 (이름l: …' 유령 줄이
+    # 생기고, 머리 앞의 잡음 때문에 앞 메시지 뒷줄로 붙어 두 메시지를 이어 번역했다(2026-10-02)
+    def _same(a, b):
+        return difflib.SequenceMatcher(None, norm(a["t"])[-40:], norm(b["t"])[-40:]).ratio() >= 0.75
+    rows = [row for i, row in enumerate(rows)
+            if len(row) > 1 or not row[0].get("ai") or not any(abs(q["y"] - row[0]["y"]) <= line_h * 0.75 and _same(row[0], q)
+                                       for j in (i - 1, i + 1) if 0 <= j < len(rows) and len(rows[j]) > 1 for q in rows[j])]
     out = []
     for row in rows:
         def by(src):

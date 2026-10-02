@@ -717,7 +717,8 @@ function recordHotkey() {
     }
     const combo = comboOf(e);
     done();
-    if (combo) applyHotkey(combo);
+    if (e.key === 'Enter') return toast('Ctrl+Enter 는 게임 중에 이미 됩니다 — 다른 프로그램의 보내기 키라 게임 밖에서는 쓰지 않습니다', 'info');
+    if (combo) applyHotkey(combo); else toast('쓸 수 없는 키입니다', 'warn');
   };
   document.addEventListener('keydown', onKey, true);
   b.addEventListener('blur', done, { once: true });

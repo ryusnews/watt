@@ -34,7 +34,8 @@ LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/r
                "Map misspelled game names to the closest real one (STORWIND = 스톰윈드). "
                "OCR misreads g as a and l as I: Ifg/lfa = lfg, Ifm = lfm, roaue = rogue, aoina = going, IVI = lvl, If = lf. "
                "'X would go hard' = X would be awesome. '/who 21' = the /who player search (21레벨 검색), not a channel. "
-               "summ/sum = a summoning service (소환 서비스), never a pet.")
+               "summ/sum = a summoning service (소환 서비스), never a pet. Keep slash commands as typed (/reload, /inv, /roll), "
+               "never translate them.")
 # 시간 뒤의 PST · EST 는 미국 시간대 — 사전의 'pst = 귓속말 주세요' 를 쓰면 '1 pm pst' 가 '오후 1시 귓속말 주세요'(2026-10-02)
 TIMEZONE = re.compile(r"(?i)(?:\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b(?:morning|noon|afternoon|evening|tonight|midnight))\s*"
                       r"(?:pst|pdt|pt|est|edt|et|cst|cdt|mst|mdt|cet|cest|gmt|utc|bst)\b")
