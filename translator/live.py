@@ -534,6 +534,12 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     # 가운데 값 — 아이콘 부스러기로 x 가 튄 머리 줄 하나가 기준을 끌어가지 않게(가장 왼쪽 값이면 18 로 끌려가 시스템 줄이 붙었다)
     margin = heads[len(heads) // 2] if heads else min((r["x"] for r in rows), default=0)
     for i, r in enumerate(rows):
+        # 채팅창 옆 아이콘(맨 아래로 ⌄ · 복사 · 설정)을 읽은 조각 — 메시지 왼쪽 여백보다 훨씬 왼쪽의 두 글자 이하.
+        # 맨 아래로 버튼을 'K' · '4' · 'V' 로 읽어 마지막 메시지에 ' K' 가 붙었다(2026-10-03)
+        if r["x"] < margin - line_h * 0.8 and len(re.sub(r"\s", "", r["text"])) <= 2 and not HANGUL.search(r["text"]):
+            if orphans is not None:
+                orphans.append(r)
+            continue
         if edit_box(r):  # 채팅 입력칸 — 메시지가 아니다(내가 치는 글)
             cur = None
             if orphans is not None:
