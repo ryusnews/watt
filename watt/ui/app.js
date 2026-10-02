@@ -705,12 +705,50 @@ async function openShot(mode) {
   yes.textContent = mode === 'pick' ? '저장' : '보내기';
   yes.disabled = mode === 'pick' || blocked;
   shot.classList.toggle('drag', mode === 'pick');
-  const at = (e) => { const b = shot.getBoundingClientRect(); return { x: Math.max(0, Math.min(b.width, e.clientX - b.left)) / b.width * s.w, y: Math.max(0, Math.min(b.height, e.clientY - b.top)) / b.height * s.h }; };
+  // 좌표는 게임 그림(img) 기준 — 틀(shot) 기준이면 미세하게 어긋났다. 다 그린 뒤 안을 끌면 옮기고 가장자리를 끌면 크기 조절
+  const img = $('#pick-img'), gx = $('#pick-gx'), gy = $('#pick-gy');
+  const at = (e) => { const b = img.getBoundingClientRect(); return { x: Math.max(0, Math.min(b.width, e.clientX - b.left)) / b.width * s.w, y: Math.max(0, Math.min(b.height, e.clientY - b.top)) / b.height * s.h, sx: b.width / s.w }; };
+  const EDGE = 7;  // 화면 px — 가장자리 잡기 너비
+  const hit = (p) => {  // 상자의 어디를 잡았나: 'move' · 'n' 's' 'e' 'w' 조합 · null
+    if (!picked) return null;
+    const t = EDGE / p.sx, r = picked;
+    const inX = p.x > r.x - t && p.x < r.x + r.w + t, inY = p.y > r.y - t && p.y < r.y + r.h + t;
+    if (!inX || !inY) return null;
+    const v = (Math.abs(p.y - r.y) < t ? 'n' : Math.abs(p.y - (r.y + r.h)) < t ? 's' : '');
+    const h = (Math.abs(p.x - r.x) < t ? 'w' : Math.abs(p.x - (r.x + r.w)) < t ? 'e' : '');
+    return v + h || 'move';
+  };
+  const cursorFor = (k) => !k ? '' : k === 'move' ? 'over-box' : k.length === 2 ? (k === 'nw' || k === 'se' ? 'over-edge-nwse' : 'over-edge-nesw') : 'n s'.includes(k) ? 'over-edge-ns' : 'over-edge-ew';
+  const setCursor = (k) => { shot.classList.remove('over-box', 'over-edge-ew', 'over-edge-ns', 'over-edge-nwse', 'over-edge-nesw'); const c = cursorFor(k); if (c) shot.classList.add(c); };
+  const guides = (p) => { const b = img.getBoundingClientRect(); gx.hidden = gy.hidden = !p; if (p) { gx.style.left = `${p.x / s.w * b.width}px`; gy.style.top = `${p.y / s.h * b.height}px`; } };
+  shot.onmousemove = mode !== 'pick' ? null : (e) => { const p = at(e); guides(p); setCursor(hit(p)); };
+  shot.onmouseleave = () => guides(null);
   shot.onmousedown = mode !== 'pick' ? null : (e) => {
-    const a = at(e);
-    const move = (ev) => { const c = at(ev); picked = { x: Math.min(a.x, c.x), y: Math.min(a.y, c.y), w: Math.abs(c.x - a.x), h: Math.abs(c.y - a.y) }; place(box, picked); yes.disabled = picked.w < 120 || picked.h < 40; };
+    const a = at(e), grab = hit(a), r0 = picked && { ...picked };
+    const fix = (r) => ({ x: Math.max(0, r.x), y: Math.max(0, r.y), w: Math.min(s.w - Math.max(0, r.x), Math.abs(r.w)), h: Math.min(s.h - Math.max(0, r.y), Math.abs(r.h)) });
+    const move = (ev) => {
+      const c = at(ev);
+      guides(c);
+      if (!grab) {  // 새로 그리기
+        picked = { x: Math.min(a.x, c.x), y: Math.min(a.y, c.y), w: Math.abs(c.x - a.x), h: Math.abs(c.y - a.y) };
+      } else if (grab === 'move') {  // 옮기기
+        const dx = c.x - a.x, dy = c.y - a.y;
+        picked = { ...r0, x: Math.max(0, Math.min(s.w - r0.w, r0.x + dx)), y: Math.max(0, Math.min(s.h - r0.h, r0.y + dy)) };
+      } else {  // 가장자리 · 모서리로 크기 조절
+        let { x, y, w, h } = r0;
+        if (grab.includes('w')) { w = r0.x + r0.w - c.x; x = c.x; }
+        if (grab.includes('e')) { w = c.x - r0.x; }
+        if (grab.includes('n')) { h = r0.y + r0.h - c.y; y = c.y; }
+        if (grab.includes('s')) { h = c.y - r0.y; }
+        if (w < 0) { x += w; w = -w; }
+        if (h < 0) { y += h; h = -h; }
+        picked = fix({ x, y, w, h });
+      }
+      place(box, picked); yes.disabled = picked.w < 120 || picked.h < 40;
+    };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    e.preventDefault();
   };
   $('#pick').hidden = false;
   const close = () => { $('#pick').hidden = true; shot.onmousedown = null; };

@@ -102,9 +102,15 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .shot { position: relative; margin-top: 12px; user-select: none; line-height: 0; border-radius: 8px; overflow: hidden; }
 .shot.drag { cursor: crosshair; }
 .shot img { width: 100%; display: block; pointer-events: none; }
-.shot .box { position: absolute; border-radius: 2px; pointer-events: none; }
+.shot .box { position: absolute; box-sizing: border-box; pointer-events: none; }  /* 테두리를 안쪽에 — 바깥에 그리면 커서보다 몇 px 나가 보였다 */
 .shot .box.found { border: 1.5px dashed var(--muted); }
-.shot .box.picked { border: 2px solid var(--bronze); background: rgba(201, 165, 113, .12); }
+/* 고른 곳은 비워 두고 바깥만 어둡게 — 안을 칠하면 채팅이 가려 다시 고르기 힘들었다(사용자, 2026-10-03) */
+.shot .box.picked { border: 1.5px solid var(--bronze); background: transparent; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .38); }
+.shot.drag.over-box { cursor: move; }
+.shot.drag.over-edge-ew { cursor: ew-resize; } .shot.drag.over-edge-ns { cursor: ns-resize; }
+.shot.drag.over-edge-nwse { cursor: nwse-resize; } .shot.drag.over-edge-nesw { cursor: nesw-resize; }
+.shot .guide { position: absolute; pointer-events: none; background: rgba(255, 255, 255, .35); }
+.shot .guide.gx { top: 0; bottom: 0; width: 1px; } .shot .guide.gy { left: 0; right: 0; height: 1px; }
 .icon-btn.sq { width: 34px; height: 34px; border-radius: 10px; background: var(--ctrl); color: var(--fg2); }
 .icon-btn.sq:hover { background: var(--ctrl-hi); }
 .icon-btn.lg { width: 44px; height: 44px; border-radius: 12px; background: var(--panel); color: var(--fg2); }
