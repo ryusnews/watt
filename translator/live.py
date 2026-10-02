@@ -233,6 +233,10 @@ def repair_segments(text: str, ru: str | None, zh: str | None) -> str:
 CJK_GAP = re.compile(r"(?<=[　-鿿＀-￯])\s+(?=[　-鿿＀-￯])")
 
 
+# 채팅 속 주소 — https://… · www.… · discord.gg/… · support.blizzard.com/article/… (점이 든 이름 + / 로 이어지는 것)
+URL = re.compile(r"(?:https?://|www\.)[^\s\]\)>\"']+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|net|org|gg|io|tv|me|co|kr|ru|cn)/[^\s\]\)>\"']*")
+
+
 def overlap(a: dict, b: dict) -> float:
     """두 영역(x, y, w, h)의 겹침 비율(IoU)."""
     ix = max(0, min(a["x"] + a["w"], b["x"] + b["w"]) - max(a["x"], b["x"]))
@@ -678,15 +682,27 @@ class Overlay:
         close.pack(side="right", padx=8)
         close.bind("<Button-1>", lambda e: root.destroy())
         self.text = tk.Text(body, bg=tks.BG, fg=tks.FG, relief="flat", bd=0, highlightthickness=0, wrap="word",
-                            height=self.show, state="disabled", cursor="arrow", spacing1=2, spacing3=4, padx=12, pady=6)
+                            height=self.show, state="disabled", cursor="xterm", spacing1=2, spacing3=4, padx=12, pady=6,
+                            selectbackground=tks.CTRL, selectforeground=tks.FG, inactiveselectbackground=tks.CTRL, exportselection=False)
         self.text.pack(fill="both", expand=True)
         self.items: deque[dict] = deque(maxlen=self.show)
         self.apply_font(size)
-        for w in (self.win, self.text, self.status, bar, mark):
+        for w in (self.win, self.status, bar, mark):
             w.bind("<ButtonPress-1>", self._start)
             w.bind("<B1-Motion>", self._drag)
             w.bind("<ButtonRelease-1>", self._save)
             w.bind("<Button-3>", self._menu)
+        # 글을 긁어 복사(주소 같은 것은 칠 수 없다, 사용자) — 끌어 고르면 놓을 때 바로 클립보드에. 통역 창은 게임에서 포커스를
+        # 가져오지 않아 Ctrl+C 를 기다리지 않는다. 고르는 동안은 새 메시지가 와도 다시 그리지 않는다(선택이 지워지지 않게)
+        self.text.bind("<Button-3>", self._menu)
+        self.text.bind("<ButtonPress-1>", self._sel_start, add="+")
+        self.text.bind("<ButtonRelease-1>", self._sel_end, add="+")
+        self.text.tag_configure("url", underline=True)
+        self.text.tag_bind("url", "<Enter>", lambda e: self.text.configure(cursor="hand2"))
+        self.text.tag_bind("url", "<Leave>", lambda e: self.text.configure(cursor="xterm"))
+        self.text.tag_bind("url", "<Double-Button-1>", self._copy_url)
+        self.selecting = False
+        self.dirty = False
         grip = tk.Label(body, text="◢", fg="#3A4454", bg=tks.BG, cursor="size_nw_se", font=(tks.SANS, 8))
         grip.place(relx=1.0, rely=1.0, anchor="se")
         grip.bind("<ButtonPress-1>", self._grip_start)
@@ -777,9 +793,20 @@ class Overlay:
             if n is not None and n < len(self.items):
                 it = list(self.items)[n]
         menu = self.menu
-        if it and it.get("name"):  # 메시지 위에서 — 그 사람을 바로 고친다(#13)
+        if it:  # 메시지 위에서 — 복사, 그 사람을 바로 고친다(#13)
             menu = tk.Menu(self.win, tearoff=0, bg=tks.PANEL, fg=tks.FG, activebackground=tks.CTRL,
                            activeforeground=tks.TEAL, bd=0, font=(tks.SANS, 9))
+            sel = self.text.tag_ranges("sel")
+            if sel:
+                picked = self.text.get(*sel[:2])
+                menu.add_command(label="고른 글 복사", command=lambda: self.copy(picked))
+            for u in dict.fromkeys(URL.findall(f"{it.get('body', '')} {it.get('ko') or ''}")):
+                menu.add_command(label="주소 복사  " + (u if len(u) <= 34 else u[:33] + "…"), command=lambda u=u: self.copy(u))
+            if it.get("ko") and not it.get("pass"):
+                menu.add_command(label="번역 복사", command=lambda: self.copy(it["ko"]))
+            menu.add_command(label="원문 복사", command=lambda: self.copy(it["body"]))
+            menu.add_separator()
+        if it and it.get("name"):
             name = it["name"]
             menu.add_command(label=f"{name} 숨기기", command=lambda: self.person(name, "hide"))
             if it.get("kind") == "ad":
@@ -787,6 +814,7 @@ class Overlay:
             else:
                 menu.add_command(label="광고로", command=lambda: self.person(name, "block", it))
             menu.add_separator()
+        if menu is not self.menu:
             for i in range(self.menu.index("end") + 1):
                 if self.menu.type(i) == "separator":
                     menu.add_separator()
@@ -820,6 +848,10 @@ class Overlay:
         self.render()
 
     def render(self):
+        if self.selecting or self.text.tag_ranges("sel"):
+            self.dirty = True  # 고른 글이 지워지지 않게 — 선택을 풀면(다른 곳을 누르면) 그린다
+            return
+        self.dirty = False
         self.text.configure(state="normal")
         self.text.delete("1.0", "end")
         for n, it in enumerate(self.items):
@@ -842,8 +874,51 @@ class Overlay:
             else:
                 self.text.insert("end", it["body"], "pending")
         self._tag_item(None, None)
+        for m in URL.finditer(self.text.get("1.0", "end-1c")):  # 주소 — 두 번 누르면 통째로 복사
+            self.text.tag_add("url", f"1.0+{m.start()}c", f"1.0+{m.end()}c")
         self.text.configure(state="disabled")
         self.text.see("end")
+
+    # ---- 복사
+    def _sel_start(self, _e=None):
+        self.selecting = True
+        if self.dirty and not self.text.tag_ranges("sel"):
+            self.selecting = False
+            self.render()
+            self.selecting = True
+
+    def _sel_end(self, _e=None):
+        self.selecting = False
+        ranges = self.text.tag_ranges("sel")
+        if ranges:
+            self.copy(self.text.get(*ranges[:2]))
+            self.win.after(1500, self._release)  # 복사했으면 선택을 풀고 밀린 메시지를 그린다 — 고른 채로 두면 창이 멈춘다
+        elif self.dirty:
+            self.render()
+
+    def _release(self) -> None:
+        if self.selecting:
+            return
+        self.text.tag_remove("sel", "1.0", "end")
+        if self.dirty:
+            self.render()
+
+    def _copy_url(self, e):
+        idx = self.text.index(f"@{e.x},{e.y}")
+        rng = self.text.tag_prevrange("url", idx + "+1c")
+        if rng:
+            self.text.tag_remove("sel", "1.0", "end")
+            self.copy(self.text.get(*rng))
+        return "break"
+
+    def copy(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        self.win.clipboard_clear()
+        self.win.clipboard_append(text)
+        self.status.config(text="복사함: " + (text if len(text) <= 28 else text[:27] + "…"))
+        self.note_until_copy = time.monotonic() + 3
 
     def _tag_item(self, n, start) -> None:
         """앞 메시지의 범위를 'it<번호>' 태그로 닫고 새 메시지를 연다."""
@@ -1296,7 +1371,7 @@ class Live:
         if now - getattr(self, "screen_checked", 0) > 3:
             self.screen_checked = now
             self.overlay.keep_on_screen()
-        if s["frames"] and now >= self.note_until:
+        if s["frames"] and now >= max(self.note_until, getattr(self.overlay, "note_until_copy", 0)):
             self.overlay.status.config(text=f"{s['translated']} · {s['tr_s']:.1f}s"
                                             + (f" · +{self.jobs.qsize()}" if self.jobs.qsize() else ""))
         if now - self.last_status >= 2:  # 런처 대시보드가 읽는 상태 · 런처가 바꾼 설정/영역/명령
