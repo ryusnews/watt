@@ -78,7 +78,7 @@ def read_frame(eng: ocr.Ocr, img: np.ndarray) -> tuple[list[dict], float]:
     lines = {k: [{a: b for a, b in l.items() if a in ("t", "x", "y", "h", "w", "ai")} for l in v] for k, v in r.items()}
     hs = [l["h"] for ls in lines.values() for l in ls]
     lh = int(np.median(hs) * 1.25) if hs else 15
-    rows = live.pick_lines(lines, lh)
+    rows = live.pick_lines(live.strip_grip(lines, img.shape[1], img.shape[0], lh), lh)  # 앱과 같게
     return live.build_messages(rows, live.line_pitch(rows, lh)), ms
 
 

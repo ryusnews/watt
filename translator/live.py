@@ -294,6 +294,32 @@ def compose(k: dict | None, chosen: dict, lang: str, line_h: int) -> str:
     return chosen["t"]
 
 
+def strip_grip(lines: dict, w: int, h: int, line_h: int) -> dict:
+    """채팅창 오른쪽 아래 크기 조절 표시(◢ · //)를 글자로 읽은 조각을 뺀다 — '4' · '√' · '/' 로 읽혀 마지막 메시지에 붙었다
+    ('ㅋㅋ 4', 2026-10-03). 영역 오른쪽 아래 구석(줄 높이 2개)에 있는 두 글자 이하 낱말만, 한글은 빼지 않는다."""
+    x_min, y_min = w - 2.0 * line_h, h - 2.2 * line_h
+    out = {}
+    for k, ls in lines.items():
+        keep = []
+        for l in ls:
+            if l["y"] + l.get("h", line_h) < y_min:
+                keep.append(l)
+                continue
+            words = l.get("w") or []
+            grip = [q for q in words if q[1] >= x_min and len(q[0].strip()) <= 2 and not HANGUL.search(q[0])]
+            if not grip:
+                if not words and l["x"] >= x_min and len(l["t"].strip()) <= 2 and not HANGUL.search(l["t"]):
+                    continue  # 낱말 정보 없이 구석의 짧은 조각만
+                keep.append(l)
+                continue
+            rest = [q for q in words if q not in grip]
+            if not rest:
+                continue
+            keep.append({**l, "t": " ".join(q[0] for q in rest), "w": rest, "x": min(q[1] for q in rest)})
+        out[k] = keep
+    return out
+
+
 def pick_lines(lines: dict, line_h: int) -> list[dict]:
     """엔진들의 같은 위치 줄 중 그럴듯한 것: 한글 → ko, 한자 → zh, 진짜 러시아어(키릴 60%↑) → ru, 그 밖 → en."""
     en, ko, zh, ru = (lines.get("en-US") or [], lines.get("ko") or [], lines.get("zh-Hans-CN") or [],
@@ -1141,7 +1167,7 @@ class Live:
         self.stats["changed"] += 1
         self.stats["ocr_ms"] = r.get("ms", 0)
         lh = self.region["line_h"]
-        rows = pick_lines(r["lines"], lh)
+        rows = pick_lines(strip_grip(r["lines"], self.region["w"], self.region["h"], lh), lh)
         lh = line_pitch(rows, lh)
         orphans: list = []
         msgs = build_messages(rows, lh, orphans)
