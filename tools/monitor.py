@@ -57,12 +57,23 @@ def report(out: Path) -> str:
     done = [r for r in log if t0 <= r["t"] <= t1]
     earlier = [r for r in log if r["t"] < t0]
     eng, ads, seen, frames_ms = ocr.Ocr(), AdFilter(), {}, []
+    # 앱과 같게 읽는다 — 설정에 켠 AI 글자 인식까지(없으면 Windows OCR 만). 예전엔 Windows OCR 만으로 다시 읽어 Prat
+    # 화면에서 메시지를 이어 붙이고 '놓침'을 10–18% 로 잘못 셌다(2026-10-01)
+    from watt import settings
+    langs = settings.load().get("ai_langs") or []
+    if langs:
+        eng.set_ai(langs, gpu=False)
+    print(f"다시 읽기: Windows OCR" + (f" + AI {','.join(sorted(eng.ai.rec))}" if eng.ai else "") +
+          (f" (AI 못 띄움: {eng.ai_error})" if langs and not eng.ai else ""))
     for s in meta["shots"]:  # 화면에 나온 외국어 메시지(지금 코드로 다시 읽음)
         msgs, ms = read_frame(eng, load_png(out / s["png"]))
         frames_ms.append(ms)
+        ys = sorted({r["y"] for m in msgs for r in m["rows"]})
+        pitch = float(np.median(np.diff(ys))) if len(ys) > 2 else 20
         for m in msgs:
             w = len(re.sub(r"\W", "", m["body"]))
-            if m["lang"] == "ko" or not m["name"] or w < 3 or is_junk(m["body"]):
+            # 앱이 번역하지 않는 것은 빼고 — 한국어(그대로 보임), 이름 없는 줄, 잡음, 화면 맨 위에서 잘린 메시지(머리가 위로 밀려 나감)
+            if m["lang"] == "ko" or not m["name"] or w < 2 or is_junk(m["body"], True) or m["rows"][0]["y"] < pitch * 0.8:
                 continue
             k = dk(m["body"])
             if not any(difflib.SequenceMatcher(None, k, q).ratio() >= 0.85 for q in seen):
