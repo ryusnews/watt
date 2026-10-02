@@ -273,8 +273,9 @@ def legacy_ollama_status() -> dict:
 
 
 def ollama_start() -> dict:
-    """WATT 전용 실행기를 켠다."""
-    runner.start()
+    """실행기를 켠다 — 못 켜면 까닭을."""
+    if not runner.start():
+        raise RuntimeError(f"AI 실행기를 켜지 못했습니다 — {runner.last_error or '까닭 모름'}")
     return runner.status()
 
 
@@ -337,6 +338,8 @@ def ollama_install(progress=None, cancel=None) -> dict:
     """WATT 전용 실행기(공식 포터블 zip)를 받아 풀고 켠다 — 설치 창 · 관리자 권한 없이. AMD 그래픽 카드면 ROCm 묶음도."""
     runner.install(amd_gpu(), progress, cancel)
     runner.set_mode("watt")
+    if not runner.running():
+        raise RuntimeError(f"받았지만 AI 실행기를 켜지 못했습니다 — {runner.last_error or '까닭 모름'}")
     return runner.status()
 
 

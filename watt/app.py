@@ -427,7 +427,8 @@ class Api:
                 last[:] = [now, done, now]
                 self._emit(type="progress", task="pull", model=name, status=status, done=done, total=total,
                            speed=speed)
-            runner.start()
+            if not runner.start():  # 켜지 못했으면 받기 전에 까닭을(그냥 받으면 '연결 거부'만 보였다, PC방 2026-10-02)
+                raise RuntimeError(f"AI 실행기를 켜지 못했습니다 — {runner.last_error or '까닭 모름'}")
             had = any(m["name"] == name for m in system.ollama_status()["models"])
             st = system.model_pull(name, prog, cancel)  # 전용이면 그 모델 폴더에(지울 때 폴더째)
             if runner.mode() == "system" and not had:  # PC 의 Ollama 에 받은 것 — 원래 있던 모델은 지울 때 건드리지 않는다

@@ -342,7 +342,8 @@ const DETAIL = {
     // WATT 전용 Ollama(공식 포터블) — PC 에 Ollama 가 있어도 따로. 설치 창 · 관리자 권한 없이 WATT 폴더에 푼다
     const action = !o.installed ? `<button class="btn primary" data-act="install_ollama" ${run ? 'disabled' : ''} data-tip="WATT 폴더에만 · 설치 창 없이">${icon('i-download', 'sm')}받기 ${o.download ? gb(o.download) + 'GB' : ''}</button>`
       : `<span class="inline">${remove}${!o.running ? `<button class="btn primary" data-act="start_ollama" ${run ? 'disabled' : ''}>${icon('i-power', 'sm')}켜기</button>` : ''}</span>`;
-    return [chips + prog, action];
+    const err = o.error && !o.running && !run ? `<div class="err-text">${esc(o.error)}</div>` : '';
+    return [chips + prog + err, action];
   },
   model() {
     const st = S.state, sel = S.selModel || st.settings.model, p = S.progress.pull;

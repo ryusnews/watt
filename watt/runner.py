@@ -46,6 +46,7 @@ STORE_NAME = "WATT-models"
 MARK = ".watt"  # WATT 가 만든 모델 폴더 표시 — 지울 때 이것이 있는 폴더만
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _lock = threading.Lock()
+last_error = ""  # 켜기에 실패한 까닭(ollama.log 끝) — 화면에 그대로
 
 
 # ---- 방식
@@ -201,9 +202,19 @@ def _start_system(wait: float) -> bool:
     return running()
 
 
-def start(wait: float = 20) -> bool:
-    """실행기를 띄운다(이미 떠 있으면 그대로). 전용이면 모델 폴더는 OLLAMA_MODELS 로."""
+def _log_tail(n: int = 6) -> str:
+    try:
+        lines = (paths.LOGS / "ollama.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    except OSError:
+        return ""
+    return " / ".join(l.strip()[-160:] for l in lines[-n:] if l.strip())
+
+
+def start(wait: float = 45) -> bool:
+    """실행기를 띄운다(이미 떠 있으면 그대로). 전용이면 모델 폴더는 OLLAMA_MODELS 로. 실패하면 last_error 에 까닭."""
+    global last_error
     if running():
+        last_error = ""
         return True
     if mode() == "system":
         return _start_system(wait)
@@ -211,23 +222,34 @@ def start(wait: float = 20) -> bool:
         if running():
             return True
         if not EXE.exists():
+            last_error = "WATT 전용 실행기를 아직 받지 않았습니다"
             return False
         store = models_dir()
         _mark(store)
         env = {**os.environ, "OLLAMA_HOST": f"127.0.0.1:{PORT}", "OLLAMA_MODELS": str(store)}
         paths.LOGS.mkdir(parents=True, exist_ok=True)
         log = (paths.LOGS / "ollama.log").open("ab")
-        p = subprocess.Popen([str(EXE), "serve"], env=env, cwd=str(DIR), stdout=log, stderr=log, stdin=subprocess.DEVNULL,
-                             creationflags=NO_WINDOW | 0x00000200, close_fds=True)  # CREATE_NEW_PROCESS_GROUP
+        try:
+            p = subprocess.Popen([str(EXE), "serve"], env=env, cwd=str(DIR), stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                                 creationflags=NO_WINDOW | 0x00000200, close_fds=True)  # CREATE_NEW_PROCESS_GROUP
+        except OSError as e:  # 실행이 막힘(PC방 보안 프로그램 · 실행 제한 정책 등)
+            last_error = f"실행할 수 없습니다: {e}"
+            return False
         PID.write_text(str(p.pid), encoding="utf-8")
     end = time.monotonic() + wait
     while time.monotonic() < end:
         if running():
+            last_error = ""
             return True
         if p.poll() is not None:
+            last_error = f"바로 꺼짐(코드 {p.returncode}) — {_log_tail()}"
             return False
         time.sleep(0.3)
-    return running()
+    if running():
+        last_error = ""
+        return True
+    last_error = f"{int(wait)}초 동안 응답 없음 — {_log_tail()}"
+    return False
 
 
 def _our_pids() -> list[int]:
@@ -291,7 +313,7 @@ def status() -> dict:
     exe = system_exe() if m == "system" else (str(EXE) if EXE.exists() else None)
     return {"mode": m, "chosen": _chosen(), "installed": bool(exe), "exe": exe, "running": up, "version": ver,
             "models": models, "loaded": loaded, "watt": m == "watt", "models_dir": str(models_dir()) if m == "watt" else None,
-            "download": sum(PACKS[p][1] for p in need()), "watt_ready": EXE.exists(),
+            "download": sum(PACKS[p][1] for p in need()), "watt_ready": EXE.exists(), "error": "" if up else last_error,
             "system": {"exe": system_exe(), "version": system_version()} if system_exe() else None}
 
 
