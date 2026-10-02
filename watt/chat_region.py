@@ -22,6 +22,9 @@ from .ocr import Ocr
 CHAT_RX = re.compile(r"^.{0,4}?[\[〔(]\s*\d{1,2}\s*(?:[.．,]|[\]〕)]\s*[\[〔(])"
                      r"|^.{0,4}?\[[^\]]{1,32}\]\s*(?:님의\s*\S{1,4}\s*)?[:：]"
                      r"|^.{0,4}?\[\s*\d{1,2}\s*[:：]\s*\d{2}")
+# 줄 앞의 시간 표시 — '[08:51]' 뿐 아니라 괄호 없는 '08:51 [1. 공개 - 오그리마] [이름]:' 도(기본 채팅 시간 표시, PC방 2026-10-02:
+# 통역은 읽는데 영역 찾기가 채팅 줄로 보지 않아 '채팅 줄이 보이지 않습니다'). translator.live.TIMESTAMP 와 같은 꼴
+TIME_PREFIX = re.compile(r"^\s*[\[〔(]?\s*[\dOoIl]{1,2}\s*[:：.]\s*[\dOoIl]{2}(?:\s*[:：.]\s*[\dOoIl]{2})?\s*[\]〕)jlI|]?\s*")
 TOL, RUN = 2, 4
 
 
@@ -51,7 +54,7 @@ def find(img: np.ndarray | None = None, window: dict | None = None) -> dict:
         lines += Ocr.lines_of(res)
     ocr_ms = int((time.perf_counter() - t0) * 1000)
 
-    hits = [l for l in lines if CHAT_RX.search(l["t"])]
+    hits = [l for l in lines if CHAT_RX.search(l["t"]) or CHAT_RX.search(TIME_PREFIX.sub("", l["t"], count=1))]
     hits.sort(key=lambda l: l["y"])
     dedup = {}
     for l in hits:  # 두 엔진이 같은 줄을 읽은 것 — 세로 위치로 하나만

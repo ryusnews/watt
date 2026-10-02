@@ -169,7 +169,8 @@ function renderHome() {
   const ocrMiss = st.ocr.langs.filter((l) => !l.installed).map((l) => l.label);
   stat('#st-ai', st.ollama.running ? (st.models.find((x) => x.name === st.settings.model)?.installed ? 'ok' : 'warn') : 'err',
     st.ollama.running ? st.settings.model : '꺼짐');
-  stat('#st-ocr', ocrMiss.length ? 'warn' : 'ok', ocrMiss.length ? `${ocrMiss[0]} 없음` : `${ocrOk}개 언어`);
+  const aiCovers = ocrMiss.length && st.steps && st.steps.ocr === 'done';  // 빠진 언어 팩을 AI 글자 인식이 대신 읽음
+  stat('#st-ocr', ocrMiss.length && !aiCovers ? 'warn' : 'ok', !ocrMiss.length ? `${ocrOk}개 언어` : aiCovers ? `${ocrOk}개 + AI` : `${ocrMiss[0]} 없음`);
   stat('#st-game', st.game ? 'ok' : 'off', st.game ? (st.game.flavor || st.game.exe) : '꺼짐');
   stat('#st-region', st.region ? 'ok' : 'warn', st.region ? `${st.region.w}×${st.region.h}` : '찾기 필요');
   renderFeed();
