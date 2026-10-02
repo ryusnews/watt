@@ -801,6 +801,68 @@
      "성난불길"
     ]
    ]
+  },
+  {
+   "src": "LF chanter",
+   "must": [
+    [
+     "마법부여사"
+    ]
+   ],
+   "must_not": [
+    "사제"
+   ]
+  },
+  {
+   "src": "tank LF RFC",
+   "must": [
+    [
+     "성난불길"
+    ],
+    [
+     "탱커가",
+     "탱커 파티"
+    ],
+    [
+     "찾"
+    ]
+   ]
+  },
+  {
+   "src": "Tank LF 1 dps for RFC",
+   "must": [
+    [
+     "성난불길"
+    ],
+    [
+     "딜러"
+    ],
+    [
+     "구"
+    ]
+   ]
+  },
+  {
+   "src": "busco heal minas de la muerte",
+   "must": [
+    [
+     "죽음의 폐광"
+    ],
+    [
+     "힐"
+    ]
+   ]
+  },
+  {
+   "src": "cherche heal Mortemines",
+   "must": [
+    [
+     "죽음의 폐광"
+    ],
+    [
+     "힐"
+    ]
+   ]
   }
  ]
 }

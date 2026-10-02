@@ -498,6 +498,12 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
                    "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
+        elif cur and r["lang"] == "ko" and cur["lang"] != "ko" and cur["name"] and not parse_header(r["text"], True):
+            # 외국어 메시지 아래의 한국어 줄 = 한국어 클라이언트의 시스템 · 이모트 줄 — 뒷줄로 붙이면 '… at tarag 오랜 시간
+            # 아무런 행동도 하지 않아 자동으로 접속 종료 합니다' 를 이어 번역했다(2026-10-02). 보낸 사람의 언어는 한 메시지 안에서 같다
+            cur = None
+            if orphans is not None:
+                orphans.append(r)
         elif cur and r["y"] - last_y <= line_h * 1.6 and r["x"] - cur["x"] >= line_h * 0.25:
             # 바로 위 메시지의 머리 줄보다 들여쓴 줄 = 그 메시지의 뒷부분 — 화면 전체의 여백(머리 줄 x 의 가운데 값)은 화면마다
             # 47–53px 로 흔들려, 10px 들여쓴 뒷줄을 여백에서 시작한 새 메시지로 갈랐다(여러 줄 메시지가 줄마다 번역, 2026-10-01)
@@ -1047,6 +1053,8 @@ class Live:
             elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]):
                 decision = "skip_junk"
             elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("
+                                    or len(HANGUL.findall(re.sub(r"\[[^\]]*\]", "", m["body"]))) >= 2  # 한국어 클라이언트 이모트 · 시스템 줄(…방귀를 뀝니다)
+                                    or re.fullmatch(r"\S*\.(?:com|net|org|gg)/\S*", m["body"].strip())  # 주소만
                                     or re.match(r"[^\[]*\]", m["body"])):  # '攻击 ]' — 앞 줄에서 떨어진 링크 끝 조각
                 decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:

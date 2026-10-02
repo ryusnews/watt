@@ -36,6 +36,11 @@ LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/r
                "'X would go hard' = X would be awesome. '/who 21' = the /who player search (21레벨 검색), not a channel. "
                "summ/sum = a summoning service (소환 서비스), never a pet. Keep slash commands as typed (/reload, /inv, /roll), "
                "never translate them.")
+# 'tank LF RFC' — 역할이 LF 앞이면 그 사람이 파티를 찾는다(LFG). 모델은 LF 를 보고 '탱커 구함'으로 옮겼고, 프롬프트에 예를
+# 넣으면 거꾸로 'LF heal WC'(힐러 구함)까지 '힐러가 파티 찾음'으로 바꿨다 — 번역 전에 LFG 로 바꿔 넘긴다(2026-10-02)
+ROLE_LF = re.compile(r"(?i)^\s*(tanks?|heals?|healers?|dps|melee|ranged|warrior|warr|rogue|hunter|mage|priest|warlock|lock|"
+                     r"druid|shaman|sham|paladin|pala|pally)\s+LF(?=\s+[A-Za-z])"
+                     r"(?!\s+(?:tanks?|heals?|healers?|dps|more|\d)\b)")  # LF 뒤가 사람(LF 1 dps · LF heal)이면 모집 그대로
 # 시간 뒤의 PST · EST 는 미국 시간대 — 사전의 'pst = 귓속말 주세요' 를 쓰면 '1 pm pst' 가 '오후 1시 귓속말 주세요'(2026-10-02)
 TIMEZONE = re.compile(r"(?i)(?:\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b(?:morning|noon|afternoon|evening|tonight|midnight))\s*"
                       r"(?:pst|pdt|pt|est|edt|et|cst|cdt|mst|mdt|cet|cest|gmt|utc|bst)\b")
@@ -130,7 +135,7 @@ def translate_src(text: str, model: str | None = None, chinese: bool = False) ->
     """model 을 안 주면 지금의 MODEL(통역 창이 설정에서 바꾼다) — 기본값에 MODEL 을 박으면 처음 값(12b)에 묶였다(2026-10-01).
     chinese: 중국 사용자가 쓴 글(이름이 한자 등) — 한자 없이 'NY*3DPS' 만 써도 병음 약자(NY = 怒焰 성난불길 협곡)로 읽는다.
     한자가 없으면 영어 약어로 읽어 NY 를 '냥꾼'으로 옮겼다(2026-10-01 모니터링)."""
-    text = normalize_ocr(text)
+    text = ROLE_LF.sub(r"\1 LFG", normalize_ocr(text))
     terms = matched_terms(text, chinese)
     if TIMEZONE.search(text):  # 시간대로 쓴 pst · pm 은 '귓속말 주세요' 가 아니다
         terms = {k: v for k, v in terms.items() if k.lower() not in ("pst", "pm")}

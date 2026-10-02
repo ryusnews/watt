@@ -121,7 +121,7 @@ def fix(text: str) -> str:
     for a, b in ZH_FIXES:
         text = text.replace(a, b)
     text = re.sub(r"(?<![A-Za-z])[IlL][fF]\s+1\s?[mM](?![A-Za-z])", "lf1m", text)  # If 1m rfc → lf1m(1명 구함)
-    text = re.sub(r"((?:^|[,.!?]\s*|(?:hi|hey|hello|and|so|but|yes|yeah|ok)\s+))1m\s+([A-Za-z][A-Za-z']*)", _im, text,
+    text = re.sub(r"((?:^|[,.!?]\s*|\b(?:hi|hey|hello|and|so|but|yes|yeah|ok)\s+))1m\s+([A-Za-z][A-Za-z']*)", _im, text,
                   flags=re.I)
     text = re.sub(r"(?:(?<=\s)|^)[l|](?=\s+[a-z])", "I", text)
     return TOKEN.sub(lambda m: fix_token(m.group(0)), text)
