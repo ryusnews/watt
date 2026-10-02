@@ -117,6 +117,8 @@ class Api:
         steps = {
             "system": "done",
             "ocr": "done" if not oc["missing"] else "todo",
+            # AI 글자 인식(권장, #83) — 켠 언어가 있고 그 모델을 받아 두었으면 done. 필수 단계는 아니다
+            "ai": "done" if cfg.get("ai_langs") and self._ai_ready(cfg["ai_langs"]) else "todo",
             "ollama": "done" if ol["running"] else "todo",
             "model": "running" if "pull" in self._busy else ("done" if model_ok else "todo"),
             "addon": "done" if any(g["addon"] for g in self._game_list() if g["supported"]) else "todo",
@@ -307,6 +309,28 @@ class Api:
         return {"langs": cfg["ai_langs"], "gpu": cfg["ai_gpu"], **aipack.status(),
                 "active": live.get("ai") if time.time() - live.get("t", 0) < 10 else None, "active_gpu": live.get("ai_gpu"),
                 "error": live.get("ai_error")}
+
+    @staticmethod
+    def _ai_ready(langs: list[str]) -> bool:
+        from . import aipack
+        return not aipack.need(langs)
+
+    @_logged
+    def enable_ai(self, langs: list[str] | None = None) -> dict:
+        """환경 설정의 'AI 글자 인식' 단계 — 권장 언어(한국어 · 중국어 · 러시아어)를 한 번에 받아 켠다."""
+        from . import aiocr, aipack
+        langs = [lg for lg in aiocr.LANGS if lg in (langs or ["ko", "zh", "ru"])]
+
+        def work(cancel):
+            aipack.ensure(langs, lambda d, t: self._emit(type="progress", task="ai", done=d, total=t), cancel)
+            have = settings.load()["ai_langs"]
+            settings.save({"ai_langs": [lg for lg in aiocr.LANGS if lg in set(have) | set(langs)]})
+            return {"langs": langs}
+        if not aipack.need(langs):
+            have = settings.load()["ai_langs"]
+            settings.save({"ai_langs": [lg for lg in aiocr.LANGS if lg in set(have) | set(langs)]})
+            return {"langs": langs}
+        return {**self._task("ai", work), "bytes": sum(s for _, s in aipack.need(langs))}
 
     @_logged
     def set_ai_lang(self, lang: str, on: bool) -> dict:

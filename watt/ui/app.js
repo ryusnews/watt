@@ -39,7 +39,7 @@ window.WATT = {
         if (ev.task === 'ocr') toast('글자 인식 언어 팩을 확인했습니다', 'ok');
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
         if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
-        if (ev.task === 'ai') toast('AI 글자 인식 모델을 받았습니다', 'ok');
+        if (ev.task === 'ai') { toast('AI 글자 인식 모델을 받았습니다', 'ok'); call('get_ai').then((x) => { S.ai = x; renderSetup(); }); }
         if (ev.task === 'update' && ev.result && ev.result.opened) toast('릴리스 페이지를 열었습니다');
         if (ev.task === 'update' && ev.result && ev.result.ready) { if (S.update) S.update.ready = ev.result.ready; askRestart(ev.result.ready); }
       }
@@ -220,13 +220,14 @@ function renderFeed() {
 const STEPS = [
   { key: 'system', name: '내 PC', icon: 'i-pc' },
   { key: 'ocr', name: '글자 인식', icon: 'i-ocr' },
+  { key: 'ai', name: 'AI 글자 인식', icon: 'i-chip' },
   { key: 'ollama', name: 'AI 실행기', icon: 'i-box' },
   { key: 'model', name: '번역 모델', icon: 'i-download' },
   { key: 'addon', name: '게임 · 글꼴', icon: 'i-game' },
   { key: 'region', name: '채팅 영역', icon: 'i-frame' },
   { key: 'test', name: '번역 시험', icon: 'i-test' },
 ];
-const TASK_OF = { ocr: 'ocr', ollama: 'ollama', model: 'pull', region: 'region', test: 'test' };
+const TASK_OF = { ocr: 'ocr', ai: 'ai', ollama: 'ollama', model: 'pull', region: 'region', test: 'test' };
 function pct(p) { return p.total ? Math.floor((p.done / p.total) * 100) : 0; }
 function gb(n) { return (n / 1024 ** 3).toFixed(1); }
 function mb(n) { return n >= 1024 ** 3 ? `${gb(n)}GB` : `${Math.max(0, n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)}MB`; }
@@ -295,6 +296,21 @@ const DETAIL = {
       l.installed && removable.includes(l.code) && !run ? `<button class="chip-x" data-act="remove_ocr" data-code="${esc(l.code)}" data-label="${esc(l.label)}" aria-label="${esc(l.label)} 언어 팩 지우기" data-tip="언어 팩 지우기">${icon('i-x')}</button>` : ''}</span>`).join('');
     const action = miss.length ? `<button class="btn primary" data-act="install_ocr" ${run ? 'disabled' : ''} data-tip="Windows 권한 확인 창이 뜹니다">${icon('i-shield', 'sm')}${run ? '설치 중' : '설치'}</button>` : '';
     return [`<div class="chips">${chips}</div>${run ? '<div class="progress indet"><i></i></div>' : ''}`, action];
+  },
+  ai() {
+    // 권장: 한국어 · 중국어 · 러시아어 — Windows OCR 만으로는 정답 표본 메시지 찾음 97.4% · 이름 91.9%, AI 를 켜면 99.6% · 97.8%
+    const a = S.ai || {}, on = a.langs || [], models = a.models || {}, sizes = a.sizes || {};
+    const p = S.progress.ai, run = p || S.state.busy.includes('ai');
+    const NAMES = { ko: '한국어', zh: '중국어 · 영어', ru: '러시아어', latin: '유럽어' };
+    const chips = Object.keys(NAMES).map((k) => `<button class="chip ${on.includes(k) ? 'ok' : ''}" data-act="toggle_ai" data-v="${k}" ${run ? 'disabled' : ''}
+      data-tip="${models[k] ? '받음' : `${mb(sizes[k] || 0)} 받기`}">${icon(on.includes(k) ? 'i-check' : 'i-ocr')}${NAMES[k]}${k === 'latin' ? '' : ' <span class="badge bronze">권장</span>'}</button>`).join('');
+    const need = ['ko', 'zh', 'ru'].filter((k) => !on.includes(k));
+    const total = (a.runtime ? 0 : sizes.runtime || 0) + (models.det ? 0 : sizes.det || 0) + need.filter((k) => !models[k]).reduce((s, k) => s + (sizes[k] || 0), 0);
+    const prog = run ? (p && p.total ? `<div class="box"><div class="head"><span class="grow mono muted">AI 글자 인식</span><span class="pct">${pct(p)}%</span></div>
+      <div class="progress"><i style="width:${pct(p)}%"></i></div></div>` : '<div class="progress indet"><i></i></div>') : '';
+    const action = need.length ? `<button class="btn primary" data-act="enable_ai" ${run ? 'disabled' : ''} data-tip="${total ? mb(total) + ' 받기 · ' : ''}PC 안에서만 돌아갑니다">${icon('i-download', 'sm')}권장대로 켜기</button>` : '';
+    if (!S.ai) call('get_ai').then((x) => { S.ai = x; renderSetup(); });
+    return [`<div class="chips">${chips}</div>${prog}`, action];
   },
   ollama() {
     const o = S.state.ollama, p = S.progress.ollama, run = p || S.state.busy.includes('ollama');
@@ -405,6 +421,8 @@ async function act(name, d = {}) {
     return call('uninstall_ollama');
   }
   if (name === 'install_ocr') return call('install_ocr', null);
+  if (name === 'enable_ai') { const r = await call('enable_ai', null); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
+  if (name === 'toggle_ai') { const v = d.v, on = (S.ai && S.ai.langs || []).includes(v); const r = await call('set_ai_lang', v, !on); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
   if (name === 'install_ollama') return call('install_ollama');
   if (name === 'start_ollama') return call('start_ollama');
   if (name === 'pull_model') { S.progress.pull = { model: S.selModel || st.settings.model, done: 0, total: 0, status: '준비 중' }; renderSetup(); return call('pull_model', S.selModel || st.settings.model); }
@@ -819,7 +837,7 @@ function mockApi() {
       { name: 'gemma4:e4b', label: 'Gemma 4 E4B', download_gb: 6.6, vram_gb: 7, verified: false, installed: false, recommended: false },
       { name: 'gemma4:e2b', label: 'Gemma 4 E2B', download_gb: 4.6, vram_gb: 5, verified: false, installed: false, recommended: false }],
     game: { exe: 'WowB.exe', flavor: '클래식 베타', w: 2560, h: 1440 }, region: { w: 688, h: 325, line_h: 20, lines: 6 },
-    steps: { system: 'done', ocr: 'done', ollama: 'done', model: 'done', addon: 'done', region: 'done', test: 'done' },
+    steps: { system: 'done', ocr: 'done', ai: 'todo', ollama: 'done', model: 'done', addon: 'done', region: 'done', test: 'done' },
     running, busy: [], removable_ocr: ['zh-Hans-CN', 'ru-RU'],
   });
   const ok = (v) => Promise.resolve(v);
@@ -853,7 +871,7 @@ function mockApi() {
       sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092, latin: 7904513 } }),
     set_ai_lang: (l, on) => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru', 'latin'].filter((x) => x === l ? on : (settings.ai_langs || []).includes(x)) }),
     remove_ai: () => ok({}),
-    resume: () => ok({}), toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
+    resume: () => ok({}), enable_ai: () => ok({ langs: settings.ai_langs = ['ko', 'zh', 'ru'] }), toggle_maximize: () => ok(false), get_window_rect: () => ok({ x: 0, y: 0, w: innerWidth, h: innerHeight }), set_window_rect: () => ok(), save_window_rect: () => ok(),
     get_storage: () => ok({ total: 48 * 1024 ** 2, frames: 31 * 1024 ** 2, trace: 9 * 1024 ** 2, downloads: 0 }), clear_logs: () => ok({ freed: 40 * 1024 ** 2 }), use_model: (n) => ok(Object.assign(settings, { model: n })),
     install_addon: () => ok({ version: '0.2.0' }), select_game: (d) => ok(Object.assign(settings, { game_dir: d })),
     pick_game_folder: () => ok({ ok: false, error: '미리보기에서는 폴더를 고를 수 없습니다' }), log: () => ok(), find_region: () => ok({ started: true }), test_translate: () => ok({ started: true }),
