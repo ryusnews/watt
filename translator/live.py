@@ -157,7 +157,7 @@ def english_garbled(text: str) -> bool:
 # 이름 뒤 콜론을 마침표·쉼표로 읽는 경우도 받는다([6] [Skiddo Prime]. LF3M BFD)
 # 외침·귓속말은 채널 번호 없이 [이름]님의 외침: — 중국어 엔진은 '님의'를 '9 | 9' 로 읽는다. 이걸 머리로 못 알아봐
 # 외침 광고가 바로 위 메시지에 붙어 번역되던 문제(2026-10-01 분석: 광고 110건 중 75건이 남의 메시지에 붙음)
-HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJj|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lJj]"
+HEADER = re.compile(r"^\s*(?:[\[〔(]?\s*(?P<ch>\d{1,2})\s*[\]〕)lIJj|]?\s*)?[\[〔(]\s*(?P<name>[^\[\]〔〕(（]{1,32}?)\s*[\]〕)lIJj]"
                     r"\s*(?P<kind>님\s?(?:의|에게)\s*\S{1,4}(?:\s\S{1,3})?|(?:[ßB]|Lel)?\s*9(?:\s*\|\s*9)?|says|yells|whispers)?\s*[:：.,;|]\s*(?P<body>.*)$")
 
 
@@ -178,6 +178,11 @@ def parse_header(text: str, generic: bool = False) -> dict | None:
     """{ch, name, body} — [6] [이름]: 꼴, generic 이면 앞에 무엇이 붙은 [이름]: 도."""
     text = TIMESTAMP.sub("", text or "", count=1)
     m = HEADER.match(text or "")
+    if not m and LEAD_JUNK.match(text):
+        # 머리 앞 잡음 1–2자 — AI 한국어가 채팅창 왼쪽 가장자리까지 읽어 '쇠 [11 [이름]:' 이 되면 머리로 못 보고 앞 메시지
+        # 뒷줄로 붙여 두 메시지를 이어 번역했다(0.1.75 모니터링 30분에 28번)
+        text = LEAD_JUNK.sub(lambda j: "[" if j.group(0).lstrip().startswith(("[", "(", "〔")) else "", text, count=1)
+        m = HEADER.match(text)
     if m:
         return {"ch": _channel(m), "name": m.group("name"), "body": m.group("body")}
     if generic:
@@ -195,6 +200,8 @@ def _channel(m: re.Match) -> str | None:
                              "귓말" if "귓속말" in kind or kind == "whispers" else None)
 
 
+LEAD_JUNK = re.compile(r"^\s*(?:[^\s\[〔(\d]{1,2}\s+(?=[\[〔(]\s*\d{1,2}\s*[\]〕)lIJj|1]?\s*[\[〔(])"  # 쇠 [11 [이름]:
+                       r"|[\[〔(]\s*[가-힣]\s*(?=\d{1,2}\s*[\]〕)lIJj|1]?\s*[\[〔(]))")  # [회 11 [이름]:
 BRACKET = re.compile(r"\[[^\[\]]{2,60}\]")
 HANGUL_LINK = re.compile(r"\[[^\[\]]*[가-힣][^\[\]]*\]")  # [늙은 불꽃눈] — 한국어 클라이언트가 보여 주는 링크
 
