@@ -112,6 +112,11 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .shot.drag.over-edge-nwse { cursor: nwse-resize; } .shot.drag.over-edge-nesw { cursor: nesw-resize; }
 .shot .guide { position: absolute; pointer-events: none; background: rgba(255, 255, 255, .35); }
 .shot .guide.gx { top: 0; bottom: 0; width: 1px; } .shot .guide.gy { left: 0; right: 0; height: 1px; }
+/* 휠로 확대 — 안쪽 판을 옮기고 키운다(좌표는 그림 기준이라 그대로 맞다) */
+.shot-in { position: relative; transform-origin: 0 0; line-height: 0; will-change: transform; }
+.shot.panning, .shot.panning * { cursor: grabbing !important; }
+.zoom-tag { position: absolute; top: 8px; right: 8px; line-height: 1; padding: 5px 8px; border: 0; border-radius: 6px;
+  background: rgba(10, 13, 18, .8); color: var(--fg); font-size: 11.5px; cursor: pointer; }
 .icon-btn.sq { width: 34px; height: 34px; border-radius: 10px; background: var(--ctrl); color: var(--fg2); }
 .icon-btn.sq:hover { background: var(--ctrl-hi); }
 .icon-btn.lg { width: 44px; height: 44px; border-radius: 12px; background: var(--panel); color: var(--fg2); }

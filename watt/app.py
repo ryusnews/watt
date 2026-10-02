@@ -738,7 +738,7 @@ class Api:
         good = chat_region.last_good()
         if good and (good["window"]["w"], good["window"]["h"]) == (win["w"], win["h"]):
             found = good["chat"]
-        small = report.shrink(img, 1280)
+        small = report.shrink(img, 2560)  # 확대해서 고를 수 있게 게임 해상도 그대로(2560 까지) — 1280 이면 확대하면 흐렸다
         return {"img": "data:image/jpeg;base64," + base64.b64encode(report.jpeg(small)).decode(),
                 "w": win["w"], "h": win["h"], "found": found, "manual": bool(good and good.get("manual")),
                 "report": report.status()}

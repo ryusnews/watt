@@ -720,10 +720,41 @@ async function openShot(mode) {
   };
   const cursorFor = (k) => !k ? '' : k === 'move' ? 'over-box' : k.length === 2 ? (k === 'nw' || k === 'se' ? 'over-edge-nwse' : 'over-edge-nesw') : 'n s'.includes(k) ? 'over-edge-ns' : 'over-edge-ew';
   const setCursor = (k) => { shot.classList.remove('over-box', 'over-edge-ew', 'over-edge-ns', 'over-edge-nwse', 'over-edge-nesw'); const c = cursorFor(k); if (c) shot.classList.add(c); };
-  const guides = (p) => { const b = img.getBoundingClientRect(); gx.hidden = gy.hidden = !p; if (p) { gx.style.left = `${p.x / s.w * b.width}px`; gy.style.top = `${p.y / s.h * b.height}px`; } };
+  const guides = (p) => { gx.hidden = gy.hidden = !p; if (p) { gx.style.left = `${p.x / s.w * 100}%`; gy.style.top = `${p.y / s.h * 100}%`; gx.style.width = `${1 / Z.z}px`; gy.style.height = `${1 / Z.z}px`; } };
+  // 휠로 확대(커서 자리를 중심으로, 1–6배) · 오른쪽 · 가운데 버튼으로 끌어 옮기기 · 배율 표시를 누르면 원래대로
+  const inner = $('#pick-in'), ztag = $('#pick-zoom');
+  const Z = { z: 1, x: 0, y: 0 };
+  const apply = () => {
+    const W = shot.clientWidth, H = shot.clientHeight;
+    Z.x = Math.min(0, Math.max(W - W * Z.z, Z.x)); Z.y = Math.min(0, Math.max(H - H * Z.z, Z.y));
+    inner.style.transform = `translate(${Z.x}px, ${Z.y}px) scale(${Z.z})`;
+    ztag.hidden = Z.z <= 1.001; ztag.textContent = `${Z.z.toFixed(1)}×`;
+    $$('#pick .box').forEach((el) => { el.style.borderWidth = `${1.5 / Z.z}px`; });  // 테두리는 늘 1.5px 로 보이게
+  };
+  Object.assign(Z, { z: 1, x: 0, y: 0 }); apply();
+  shot.onwheel = (e) => {
+    e.preventDefault();
+    const r = shot.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    const z2 = Math.min(6, Math.max(1, Z.z * (e.deltaY < 0 ? 1.25 : 0.8)));
+    Z.x = px - (px - Z.x) * (z2 / Z.z); Z.y = py - (py - Z.y) * (z2 / Z.z); Z.z = z2;
+    apply(); guides(at(e));
+  };
+  ztag.onclick = (e) => { e.stopPropagation(); Object.assign(Z, { z: 1, x: 0, y: 0 }); apply(); };
+  shot.oncontextmenu = (e) => e.preventDefault();
   shot.onmousemove = mode !== 'pick' ? null : (e) => { const p = at(e); guides(p); setCursor(hit(p)); };
   shot.onmouseleave = () => guides(null);
-  shot.onmousedown = mode !== 'pick' ? null : (e) => {
+  shot.onmousedown = (e) => {
+    if (e.button === 1 || e.button === 2) {  // 확대한 화면 옮기기
+      if (Z.z <= 1.001) return;
+      const sx = e.clientX, sy = e.clientY, x0 = Z.x, y0 = Z.y;
+      shot.classList.add('panning');
+      const pan = (ev) => { Z.x = x0 + ev.clientX - sx; Z.y = y0 + ev.clientY - sy; apply(); };
+      const stop = () => { shot.classList.remove('panning'); window.removeEventListener('mousemove', pan); window.removeEventListener('mouseup', stop); };
+      window.addEventListener('mousemove', pan); window.addEventListener('mouseup', stop);
+      e.preventDefault();
+      return;
+    }
+    if (mode !== 'pick' || e.button !== 0) return;
     const a = at(e), grab = hit(a), r0 = picked && { ...picked };
     const fix = (r) => ({ x: Math.max(0, r.x), y: Math.max(0, r.y), w: Math.min(s.w - Math.max(0, r.x), Math.abs(r.w)), h: Math.min(s.h - Math.max(0, r.y), Math.abs(r.h)) });
     const move = (ev) => {
@@ -751,7 +782,7 @@ async function openShot(mode) {
     e.preventDefault();
   };
   $('#pick').hidden = false;
-  const close = () => { $('#pick').hidden = true; shot.onmousedown = null; };
+  const close = () => { $('#pick').hidden = true; shot.onmousedown = null; shot.onwheel = null; Object.assign(Z, { z: 1, x: 0, y: 0 }); apply(); };
   $('#pick-no').onclick = close;
   yes.onclick = async () => {
     yes.disabled = true;
