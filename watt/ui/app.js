@@ -694,7 +694,7 @@ async function openShot(mode) {
   if (!s || s.error) return toast((s && s.error) || '게임 화면을 받지 못했습니다', 'err');
   const box = $('#pick-box'), found = $('#pick-found'), shot = $('#pick-shot'), yes = $('#pick-yes');
   const place = (el, r) => { el.hidden = !r; if (r) Object.assign(el.style, { left: `${r.x / s.w * 100}%`, top: `${r.y / s.h * 100}%`, width: `${r.w / s.w * 100}%`, height: `${r.h / s.h * 100}%` }); };
-  let picked = mode === 'report' ? s.found : null;
+  let picked = s.found ? { ...s.found } : null;  // 지금 영역에서 시작 — 가장자리만 끌어 고치면 된다(처음부터 다시 그리지 않게)
   $('#pick-img').src = s.img;
   place(found, mode === 'pick' ? s.found : null);
   place(box, picked);
@@ -703,7 +703,7 @@ async function openShot(mode) {
   const blocked = mode === 'report' && !s.report.can;
   $('#pick-note').textContent = blocked ? `이미 보냈습니다 · ${s.report.wait_h}시간 뒤 다시` : mode === 'report' ? '게임 화면 1장 · 다른 사람 이름이 보일 수 있음 · 30일 뒤 삭제' : '';
   yes.textContent = mode === 'pick' ? '저장' : '보내기';
-  yes.disabled = mode === 'pick' || blocked;
+  yes.disabled = blocked || (mode === 'pick' && !(picked && picked.w >= 120 && picked.h >= 40));
   shot.classList.toggle('drag', mode === 'pick');
   // 좌표는 게임 그림(img) 기준 — 틀(shot) 기준이면 미세하게 어긋났다. 다 그린 뒤 안을 끌면 옮기고 가장자리를 끌면 크기 조절
   const img = $('#pick-img'), gx = $('#pick-gx'), gy = $('#pick-gy');
