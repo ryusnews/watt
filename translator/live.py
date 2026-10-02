@@ -233,6 +233,15 @@ def repair_segments(text: str, ru: str | None, zh: str | None) -> str:
 CJK_GAP = re.compile(r"(?<=[　-鿿＀-￯])\s+(?=[　-鿿＀-￯])")
 
 
+def overlap(a: dict, b: dict) -> float:
+    """두 영역(x, y, w, h)의 겹침 비율(IoU)."""
+    ix = max(0, min(a["x"] + a["w"], b["x"] + b["w"]) - max(a["x"], b["x"]))
+    iy = max(0, min(a["y"] + a["h"], b["y"] + b["h"]) - max(a["y"], b["y"]))
+    inter = ix * iy
+    union = a["w"] * a["h"] + b["w"] * b["h"] - inter
+    return inter / union if union else 0.0
+
+
 def find_region() -> dict:
     """채팅 영역(화면 좌표). 너무 작게 잡히면(채팅 줄이 한두 개뿐인 순간) 오류 — 지난 정상 영역을 쓴다."""
     return chat_region.screen_rect(chat_region.find_and_save())
@@ -931,8 +940,59 @@ class Live:
             self.trace.write("ai", langs=list(want[0]), gpu=bool(eng.ai and eng.ai.gpu), error=eng.ai_error or None)
         threading.Thread(target=load, daemon=True).start()
 
+    DRIFT_EVERY = 45  # 초 — 채팅창이 게임 안에서 옮겨졌는지 살피는 간격
+
+    def check_drift(self) -> None:
+        """게임 안에서 채팅창을 옮기거나 키우면 예전 영역을 계속 읽어 잘린 줄 · 채팅 탭을 번역했다 — 다시 접속하며 채팅창 배치가
+        바뀐 뒤 30분 동안(2026-10-02 18:08). 게임 창을 옮긴 것은 follow_game_window 가 따라간다. 45초마다 뒤에서 게임 화면 전체로
+        채팅 줄을 찾아, 지금 영역과 크게 다르고 · 지금 영역보다 채팅 줄을 더 많이 보고 · 두 번 연속 같은 곳이면 옮긴다.
+        사용자가 직접 지정한 영역(manual)은 건드리지 않는다."""
+        now = time.monotonic()
+        if now - getattr(self, "drift_at", now - self.DRIFT_EVERY + 20) < self.DRIFT_EVERY:
+            return  # 켠 뒤 20초 동안은 쉬고
+        busy = getattr(self, "drift_thread", None)
+        if busy and busy.is_alive():
+            return
+        self.drift_at = now
+        good = chat_region.last_good()
+        if good and good.get("manual"):
+            return
+        self.drift_thread = threading.Thread(target=self._drift_probe, daemon=True)
+        self.drift_thread.start()
+
+    def _drift_probe(self) -> None:
+        try:
+            r = chat_region.find()
+        except Exception:
+            self.drift_pending = None
+            return
+        if not chat_region.usable(r):
+            return
+        cand = chat_region.screen_rect(r)
+        cur = self.region
+        if overlap(cand, cur) >= 0.7 or r["chat_lines_found"] <= getattr(self, "last_heads", 0):
+            self.drift_pending = None  # 그대로 맞거나, 지금 영역도 그만큼 채팅 줄을 본다(다른 채팅창을 찾았을 수 있다)
+            return
+        pend = getattr(self, "drift_pending", None)
+        if not pend or overlap(pend, cand) < 0.8:
+            self.drift_pending = cand  # 한 번 더 확인 — 잠깐 가려졌거나 다른 창이 떴을 수 있다
+            return
+        self.drift_pending = None
+        try:
+            paths.ensure()
+            text = json.dumps(r, ensure_ascii=False, indent=1)
+            paths.REGION.write_text(text, encoding="utf-8")
+            paths.REGION_GOOD.write_text(text, encoding="utf-8")
+            self.seen_mtimes["region"] = paths.REGION_GOOD.stat().st_mtime  # 런처가 바꾼 것으로 다시 읽지 않게
+        except OSError:
+            pass
+        self.region = cand
+        self.trace.write("region", region=cand, by="drift", old=cur, lines=r["chat_lines_found"])
+        self.events.put(("status", f"채팅창이 옮겨져 영역을 다시 맞췄습니다: {cand['w']}×{cand['h']}"))
+
     def watch_launcher(self):
         self.follow_game_window()
+        self.check_drift()
         def mtime(p):
             try:
                 return p.stat().st_mtime
@@ -992,6 +1052,7 @@ class Live:
         lh = line_pitch(rows, lh)
         orphans: list = []
         msgs = build_messages(rows, lh, orphans)
+        self.last_heads = sum(1 for m in msgs if m["name"])  # 이 영역에서 머리를 읽은 메시지 수 — 영역 어긋남 판단에
         queued, events = [], []
         checked = []
         for m in msgs:
