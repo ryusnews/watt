@@ -877,6 +877,7 @@ class Live:
         self.seen_body = Seen(30)  # 이름을 매번 다르게 읽어도(舜应盖特 · 舜廐 盖碍) 같은 글이면 한 번만
         self.ads = AdFilter()
         self.cache: dict[str, str] = {}
+        self.started_mono = time.monotonic()
         self.started = time.time()  # 이번 통역을 켠 때 — 런처가 '이번 실행' 시간을 보인다
         self.stats = {"frames": 0, "changed": 0, "ocr_ms": 0, "translated": 0, "tr_s": 0.0}
         self.first = True
@@ -940,44 +941,40 @@ class Live:
             self.trace.write("ai", langs=list(want[0]), gpu=bool(eng.ai and eng.ai.gpu), error=eng.ai_error or None)
         threading.Thread(target=load, daemon=True).start()
 
-    DRIFT_EVERY = 45  # 초 — 채팅창이 게임 안에서 옮겨졌는지 살피는 간격
+    DRIFT_AFTER = 15  # 초 — 켠 뒤 이만큼 지나 한 번(채팅 줄이 몇 개 보이고, 지금 영역으로 몇 장 읽은 뒤)
 
     def check_drift(self) -> None:
-        """게임 안에서 채팅창을 옮기거나 키우면 예전 영역을 계속 읽어 잘린 줄 · 채팅 탭을 번역했다 — 다시 접속하며 채팅창 배치가
-        바뀐 뒤 30분 동안(2026-10-02 18:08). 게임 창을 옮긴 것은 follow_game_window 가 따라간다. 45초마다 뒤에서 게임 화면 전체로
-        채팅 줄을 찾아, 지금 영역과 크게 다르고 · 지금 영역보다 채팅 줄을 더 많이 보고 · 두 번 연속 같은 곳이면 옮긴다.
+        """게임 안에서 채팅창을 옮기거나 키우면 예전 영역을 계속 읽어 잘린 줄 · 채팅 탭을 번역했다(2026-10-02 18:08, 다시 접속하며
+        배치가 바뀜). 게임 창을 옮긴 것은 follow_game_window 가 따라간다. 채팅창을 옮기는 일은 드물어 늘 훑지 않고(사용자),
+        **통역을 켤 때 한 번** 게임 화면 전체로 채팅 줄을 찾아 맞춘다. 켜 둔 채 옮겼으면 통역 창 메뉴의 '채팅 영역 다시 찾기'.
         사용자가 직접 지정한 영역(manual)은 건드리지 않는다."""
-        now = time.monotonic()
-        if now - getattr(self, "drift_at", now - self.DRIFT_EVERY + 20) < self.DRIFT_EVERY:
-            return  # 켠 뒤 20초 동안은 쉬고
-        busy = getattr(self, "drift_thread", None)
-        if busy and busy.is_alive():
+        if getattr(self, "drift_done", False):
             return
-        self.drift_at = now
+        if time.monotonic() - self.started_mono < self.DRIFT_AFTER:
+            return
+        self.drift_done = True
         good = chat_region.last_good()
         if good and good.get("manual"):
             return
-        self.drift_thread = threading.Thread(target=self._drift_probe, daemon=True)
-        self.drift_thread.start()
+        threading.Thread(target=self._drift_probe, daemon=True).start()
 
     def _drift_probe(self) -> None:
-        try:
-            r = chat_region.find()
-        except Exception:
-            self.drift_pending = None
-            return
-        if not chat_region.usable(r):
-            return
-        cand = chat_region.screen_rect(r)
+        """두 번(5초 사이) 찾아 같은 곳일 때만 — 잠깐 가려졌거나 다른 창이 떴을 수 있다."""
+        found = []
+        for i in range(2):
+            if i:
+                time.sleep(5)
+            try:
+                r = chat_region.find()
+            except Exception:
+                return
+            if not chat_region.usable(r):
+                return
+            found.append((r, chat_region.screen_rect(r)))
+        (r, cand), (_, again) = found
         cur = self.region
-        if overlap(cand, cur) >= 0.7 or r["chat_lines_found"] <= getattr(self, "last_heads", 0):
-            self.drift_pending = None  # 그대로 맞거나, 지금 영역도 그만큼 채팅 줄을 본다(다른 채팅창을 찾았을 수 있다)
-            return
-        pend = getattr(self, "drift_pending", None)
-        if not pend or overlap(pend, cand) < 0.8:
-            self.drift_pending = cand  # 한 번 더 확인 — 잠깐 가려졌거나 다른 창이 떴을 수 있다
-            return
-        self.drift_pending = None
+        if overlap(cand, again) < 0.8 or overlap(cand, cur) >= 0.7 or r["chat_lines_found"] <= getattr(self, "last_heads", 0):
+            return  # 그대로 맞거나, 흔들리거나, 지금 영역도 그만큼 채팅 줄을 본다(다른 채팅창을 찾았을 수 있다)
         try:
             paths.ensure()
             text = json.dumps(r, ensure_ascii=False, indent=1)
