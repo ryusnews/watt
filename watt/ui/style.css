@@ -171,13 +171,19 @@ kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; backgr
 .row > span { font-size: 13.5px; line-height: 1.3; color: var(--fg2); }
 .row > span small { display: block; font: 500 11px var(--mono); color: var(--faint); }
 .row.on > .ic { color: var(--teal); } .row.on > span { color: var(--fg); }
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 4px 12px; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 14px 4px 12px; }
 .metrics > div { text-align: center; } .metrics > div + div { border-left: 1px solid var(--line); }
 .metrics b { display: block; font-size: 21px; line-height: 1.2; font-weight: 600; }
 .metrics b small { font-size: 12px; color: var(--muted); }
 .metrics > div > small { display: block; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
 .metrics b small { font-size: 12px; color: var(--muted); font-weight: 500; }
 .metrics.dim b { color: var(--dim); }
+.metrics .run-line { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 10px 8px 0;
+  padding-top: 9px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.metrics .run-line b { display: inline; font-size: 13px; line-height: 1; font-weight: 600; color: var(--fg2); }
+.metrics .run-line b small { font-size: 11px; }
+.metrics .run-line .now { color: var(--faint); }
+.metrics .run-line .now:not(:empty)::before { content: "·"; margin-right: 6px; }
 .status-grid { margin-top: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .stat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bar); min-width: 0; color: var(--muted); }
 .stat > div { min-width: 0; }

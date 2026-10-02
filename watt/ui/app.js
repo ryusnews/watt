@@ -161,7 +161,8 @@ function renderHome() {
   // 동작 — 오늘 통역이 돈 시간(껐다 켜도 더함). 툴팁: 이번 실행 시작 · 지난 시간
   $('#m-run').innerHTML = lv.runtime >= 60 ? dur(lv.runtime) : '-';
   const started = on && lv.live && lv.live.started;
-  $('#m-run-box').dataset.tip = started ? `이번 실행 ${new Date(started * 1000).toTimeString().slice(0, 5)}부터 · ${dur(Date.now() / 1000 - started, true)}` : '오늘 통역이 돈 시간';
+  $('#m-run-now').textContent = started ? `${new Date(started * 1000).toTimeString().slice(0, 5)}~ ${dur(Date.now() / 1000 - started, true)}` : '';
+  $('#m-run-box').dataset.tip = started ? '오늘 통역이 돈 시간 · 이번 실행 시작과 지난 시간' : '오늘 통역이 돈 시간';
   // 상태
   const ocrOk = st.ocr.langs.filter((l) => l.installed).length;
   const ocrMiss = st.ocr.langs.filter((l) => !l.installed).map((l) => l.label);
@@ -691,7 +692,6 @@ document.addEventListener('mouseover', (e) => {
 function dur(s, plain = false) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   if (plain) return h ? `${h}시간 ${m}분` : `${m}분`;
-  if (h >= 10) return `${h}<small>h</small>`;  // 칸이 좁다
   return h ? `${h}<small>h</small> ${m}<small>m</small>` : `${m}<small>m</small>`;
 }
 const HK_DEFAULT = 'Ctrl+Shift+K';

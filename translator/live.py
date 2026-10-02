@@ -1046,6 +1046,8 @@ class Live:
                 decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
             elif edge is not None and (i > edge if newest_top else i < edge):
                 decision = "skip_old"  # 앞 화면에도 있던 메시지보다 옛 쪽
+            elif m["name"] and re.fullmatch(r"[\d\s.]+", m["name"]):
+                decision = "skip_noname"  # 채널 퇴장 · 입장 알림('채널 퇴:[1.공개-오그리마]') — 이름이 숫자뿐이면 사람이 아니다
             elif m["lang"] == "ko":
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
