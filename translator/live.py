@@ -772,6 +772,9 @@ class Overlay:
         self.render()
 
     def add(self, item: dict):
+        if any(x is item for x in self.items):  # 광고 아님으로 고쳐 다시 번역하는 접은 광고 — 이미 있는 줄
+            self.render()
+            return
         self.items.append(item)
         self.render()
 
@@ -824,9 +827,9 @@ class Live:
         self.ocr = Reader(SCALE)
         self.overlay = Overlay(self.root, self.region, self.cfg)
         self.overlay.on_refind = self.refind
-        self.overlay.on_translate = self.jobs.put
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
+        self.overlay.on_translate = self.jobs.put  # jobs 를 만든 뒤에(0.1.70 은 앞에 두어 켤 때 멈췄다)
         self.seen = Seen()
         self.shown: set[str] = set()  # 통역 창에 올린 글(중복 키) — 안 올린 글을 다시 올리면 한 번은 번역
         self.prev_keys: list[tuple[str, int]] = []  # 바로 앞 화면의 (메시지, 위치) — 새 메시지가 나타나는 쪽 판단
