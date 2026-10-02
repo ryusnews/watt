@@ -32,11 +32,13 @@ OLLAMA_URL = _Url()
 
 # 번역 모델 — VRAM 에 맞춰 추천. verified: 평가 세트(보내기 23·받기 22·사전 15)로 검증했는가
 MODELS = [
+    # vram_gb: 실제로 잰 값(nvidia-smi 차이, 문맥 2048, RTX 5080, 2026-10-02) — e2b 3.1 · e4b 4.7 · 12b 8.1GB.
+    # Ollama 의 /api/ps 크기는 e2b · e4b 를 0.2GB 로 보여 믿을 수 없다
     {"name": "gemma4:12b", "label": "Gemma 4 12B", "download_gb": 7.7, "vram_gb": 8.1, "min_vram": 11,
      "verified": True, "note": "가장 정확 · 문장당 약 0.3~1.3초(게임 중)"},
-    {"name": "gemma4:e4b", "label": "Gemma 4 E4B", "download_gb": 6.6, "vram_gb": 7.0, "min_vram": 8,
+    {"name": "gemma4:e4b", "label": "Gemma 4 E4B", "download_gb": 6.6, "vram_gb": 4.8, "min_vram": 7,
      "verified": False, "note": "VRAM 8GB 급 · 검증 전"},
-    {"name": "gemma4:e2b", "label": "Gemma 4 E2B", "download_gb": 4.6, "vram_gb": 5.0, "min_vram": 0,
+    {"name": "gemma4:e2b", "label": "Gemma 4 E2B", "download_gb": 4.6, "vram_gb": 3.2, "min_vram": 0,
      "verified": False, "note": "가벼움 · 정확도 낮을 수 있음 · 검증 전"},
 ]
 
@@ -150,7 +152,8 @@ def vram_plan(ai_gpu: bool = False) -> dict:
     total = best["vram_gb"] if best else 0
     used = vram_used_gb()
     from . import screen
-    wow = bool(screen.list_windows(True))
+    wows = len(screen.list_windows(True))
+    wow = wows > 0
     watt_loaded = 0.0
     try:
         mine = {m["name"]: m["vram_gb"] for m in MODELS}
@@ -161,9 +164,12 @@ def vram_plan(ai_gpu: bool = False) -> dict:
         return {"total": total, "used": None, "wow": wow, "wow_est": 0, "available": None,
                 "pick": recommend_model(total)}
     avail = total - used + watt_loaded - (0 if wow else WOW_VRAM_GB) - (1.5 if ai_gpu else 0) - MARGIN_GB
-    pick = next((m["name"] for m in MODELS if m["vram_gb"] <= avail), MODELS[-1]["name"])
-    return {"total": round(total, 1), "used": round(used, 1), "wow": wow, "wow_est": 0 if wow else WOW_VRAM_GB,
-            "watt_loaded": round(watt_loaded, 1), "available": round(avail, 1), "pick": pick}
+    fit = next((m for m in MODELS if m["vram_gb"] <= avail), None)
+    pick = (fit or MODELS[-1])["name"]
+    # 다 안 들어가면 Ollama 가 일부를 CPU 로 돌린다 — 느려진다. 와우 창을 줄이거나 그래픽 설정을 낮추면 남는다
+    short = 0 if fit else round(MODELS[-1]["vram_gb"] - avail, 1)
+    return {"total": round(total, 1), "used": round(used, 1), "wow": wow, "wows": wows, "wow_est": 0 if wow else WOW_VRAM_GB,
+            "watt_loaded": round(watt_loaded, 1), "available": round(avail, 1), "pick": pick, "short": short}
 
 
 # ---- 관리자 권한으로 실행(UAC) 후 끝날 때까지 기다리기

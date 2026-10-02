@@ -377,7 +377,8 @@ const DETAIL = {
       : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>` : '<span class="badge ok">사용 중</span>';
     const v = st.vram;
     const vramLine = v && v.available != null ? `<div class="facts vram-facts" data-tip="지금 쓰는 VRAM ${v.used}GB / ${v.total}GB${v.wow ? ' · 와우 켜짐' : ` · 와우 꺼짐 — 켜면 약 ${v.wow_est}GB 더 씀(예상)`}${v.watt_loaded ? ` · 지금 올린 WATT 모델 ${v.watt_loaded}GB 포함` : ''}">
-      ${icon('i-gauge', 'sm')}<span>번역 모델에 쓸 VRAM <b>${v.available}GB</b></span><span class="muted">${v.wow ? '와우 켜진 지금 기준' : '와우 몫 빼고'}</span></div>` : '';
+      ${icon('i-gauge', 'sm')}<span>번역 모델에 쓸 VRAM <b>${v.available}GB</b></span><span class="muted">${v.wow ? '와우 켜진 지금 기준' : '와우 몫 빼고'}</span></div>
+      ${v.short > 0 ? `<div class="err-text">VRAM ${v.short}GB 부족 — 일부를 CPU 로 돌려 번역이 느려집니다${v.wows > 1 ? ` · 와우 창 ${v.wows}개 중 하나를 닫거나` : ''} 와우 그래픽 설정(해상도 · 텍스처)을 낮추면 남습니다</div>` : ''}` : '';
     const terms = `${vramLine}<p class="terms-line">받으면 Google <a href="#" data-url="https://ai.google.dev/gemma/terms">Gemma 이용 약관</a>에 동의하는 것으로 봅니다</p>`;
     return [`<div class="models">${cards}</div>${terms}${box}`, action];
   },
