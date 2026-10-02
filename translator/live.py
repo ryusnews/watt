@@ -1291,9 +1291,45 @@ class Live:
                 time.sleep(2)
             time.sleep(max(0.0, INTERVAL - (time.monotonic() - t0)))
 
+    def _batch_ahead(self, first: dict) -> None:
+        """밀려 있으면 줄 선 메시지를 몇 개 더 꺼내 한 번에 번역해 둔다(incoming.translate_batch) — 꺼낸 것은 캐시에 넣고 줄
+        맨 앞으로 되돌려, 아래 한 건씩 도는 길이 캐시에서 바로 내보낸다. 실패하면 아무것도 하지 않는다(한 건씩)."""
+        if self.jobs.qsize() < 1:
+            return
+        picked = [first]
+        rest = []
+        while len(picked) < incoming.BATCH_MAX:
+            try:
+                m = self.jobs.get_nowait()
+            except queue.Empty:
+                break
+            if m.get("pass") or norm(m["body"]) in self.cache or any(norm(m["body"]) == norm(p["body"]) for p in picked):
+                rest.append(m)
+            else:
+                picked.append(m)
+        if len(picked) > 1:
+            try:
+                res, sec = incoming.translate_batch(
+                    [(m["body"], m["lang"] == "zh" or bool(CJK.search(m["name"]))) for m in picked])
+                for m, (ko, src) in zip(picked, res):
+                    self.cache[norm(m["body"])] = (ko, src)
+                self.trace.write("batch", n=len(picked), llm_s=round(sec, 2), backlog=self.jobs.qsize())
+                self.batch_sec = sec / len(picked)
+            except Exception as e:
+                self.trace.write("batch", n=len(picked), error=f"{type(e).__name__}: {e}")
+        # 꺼낸 것을 원래 순서대로 줄 앞에 되돌린다(first 는 부른 쪽이 들고 있다)
+        back = picked[1:] + rest
+        with self.jobs.mutex:
+            for m in reversed(back):
+                self.jobs.queue.appendleft(m)
+                self.jobs.unfinished_tasks += 1
+            self.jobs.not_empty.notify()
+
     def translate_loop(self):
         while self.running:
             m = self.jobs.get()
+            if not m.get("pass") and norm(m["body"]) not in self.cache:
+                self._batch_ahead(m)
             self.events.put(("add", m))
             body_key = norm(m["body"])
             t0 = time.monotonic()
@@ -1302,7 +1338,8 @@ class Live:
             if m.get("pass"):
                 m["ko"], sec, cached = m["body"], 0.0, True
             elif body_key in self.cache:
-                (m["ko"], src), sec, cached = self.cache[body_key], 0.0, True
+                (m["ko"], src), sec, cached = self.cache[body_key], getattr(self, "batch_sec", 0.0), True
+                self.batch_sec = 0.0
                 m["tag"] = self.src_tag(m, src)
             else:
                 src = ""

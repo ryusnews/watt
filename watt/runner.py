@@ -285,6 +285,23 @@ def _unload_watt_models() -> None:
         pass
 
 
+def unload_all() -> list[str]:
+    """올라간 모델 내리기(VRAM 비우기) — WATT 전용이면 모두, PC 의 Ollama 면 WATT 모델만. 내린 이름."""
+    from .system import MODELS
+    mine = {m["name"] for m in MODELS}
+    gone = []
+    try:
+        for m in _get("/api/ps").get("models", []):
+            if mode() == "watt" or m["name"] in mine:
+                req = urllib.request.Request(url() + "/api/generate", data=json.dumps({"model": m["name"], "keep_alive": 0}).encode(),
+                                             headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=15).read()
+                gone.append(m["name"])
+    except (urllib.error.URLError, OSError, ValueError, KeyError):
+        pass
+    return gone
+
+
 def stop_watt() -> None:
     """WATT 전용 실행기 프로세스를 끈다."""
     # 실행 파일 경로로만 고른다 — 남은 PID 파일의 번호는 다른 프로그램이 다시 쓸 수 있다

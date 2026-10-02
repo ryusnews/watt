@@ -580,6 +580,16 @@ class Api:
         return self.save_settings({"model": name})
 
     @_logged
+    def unload_models(self) -> dict:
+        """'내리기' — 통역 창 · 입력창을 끄고(켜 둔 채 내리면 다음 번역에 다시 올라온다) 모델을 내린다.
+        전용 실행기는 명령 창에서 ollama ps · stop 을 쓸 수 없어 앱에서(사용자, 2026-10-02)."""
+        stopped = [r for r in ("live", "input") if self._alive(r)]
+        self.stop_all()
+        gone = runner.unload_all()
+        log.info("unload models %s (stopped %s)", gone, stopped)
+        return {"unloaded": gone, "stopped": stopped, "ollama": system.ollama_status()}
+
+    @_logged
     def set_runner_mode(self, mode: str) -> dict:
         """AI 실행기 방식 — system(PC 의 Ollama) · watt(WATT 전용, 없으면 받기부터)."""
         def work(cancel):

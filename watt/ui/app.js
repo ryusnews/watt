@@ -126,7 +126,7 @@ async function suggestLighter() {
   if (l.installed) { await call('use_model', l.name); toast(`${l.label} 로 바꿨습니다`, 'ok'); refresh(true); }
   else { show('setup'); S.step = Math.max(0, STEPS.findIndex((s) => s.key === 'model')); renderSetup(); }
 }
-function renderAll() { renderEngine(); renderHome(); renderUpdate(); if (S.view === 'setup') renderSetup(); $('#setup-dot').hidden = setupDone(); }
+function renderAll() { renderEngine(); renderHome(); renderLoaded(); renderUpdate(); if (S.view === 'setup') renderSetup(); $('#setup-dot').hidden = setupDone(); }
 function setupDone() {
   const st = S.state && S.state.steps; if (!st) return false;
   return ['ocr', 'ollama', 'model', 'region'].every((k) => st[k] === 'done');
@@ -496,9 +496,16 @@ function renderModelsDir() {
   $('#set-models-pick').disabled = !!run;
   $('#set-models-reset').hidden = !m.custom || !!run;
 }
+function renderLoaded() {
+  const o = S.state && S.state.ollama; if (!o || !$('#set-loaded')) return;
+  const names = (o.loaded || []).map((m) => m.name);
+  $('#set-loaded').textContent = names.length ? names.join(', ') : '없음';
+  $('#set-unload').hidden = !names.length;
+}
 function renderSettings() {
   const c = S.state && S.state.settings; if (!c) return;
   renderModelsDir();
+  renderLoaded();
   renderHotkey();
   const games = (S.games || []).filter((g) => g.supported);
   const cur = c.game_dir || defaultGame(S.games || []) || '';
@@ -879,6 +886,13 @@ function bind() {
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
+  $('#set-unload').onclick = async () => {
+    const live = S.live && S.live.running && (S.live.running.live || S.live.running.input);
+    if (live && !(await confirmBox('모델 내리기', '통역 · 입력창을 끄고 내립니다 — 켜 두면 다음 번역에 다시 올라옵니다', '끄고 내리기', '취소', false))) return;
+    const r = await call('unload_models');
+    toast(r && r.unloaded && r.unloaded.length ? `내렸습니다: ${r.unloaded.join(', ')}` : '올라간 모델이 없습니다', 'ok');
+    refresh(true);
+  };
   $('#set-runner').onchange = async (e) => {
     const o = S.state.ollama, v = e.target.value;
     if (v === 'watt' && !o.watt_ready) { show('setup'); S.step = STEPS.findIndex((s) => s.key === 'ollama'); renderSetup(); e.target.value = o.mode; return; }
@@ -1002,7 +1016,7 @@ function mockApi() {
     reset_term: (id) => { const t = mockTerms.find((x) => x.id === id); t.origin = 'base'; return ok({ ok: true }); },
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
-    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), set_hotkey: (c) => ok({ ok: true, combo: c }), models_info: () => ok({ mode: 'watt', dir: 'C:\\Users\\me\\AppData\\Local\\WATT\\models', custom: '', used: 7.2e9, free: 120e9, importable: ['gemma4:e4b'] }), pick_models_dir: () => ok({ cancel: true }), set_models_dir: () => ok({}), import_model: () => ok({ started: true }), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
+    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), set_hotkey: (c) => ok({ ok: true, combo: c }), models_info: () => ok({ mode: 'watt', dir: 'C:\\Users\\me\\AppData\\Local\\WATT\\models', custom: '', used: 7.2e9, free: 120e9, importable: ['gemma4:e4b'] }), pick_models_dir: () => ok({ cancel: true }), unload_models: () => ok({ unloaded: ['gemma4:12b'], stopped: [] }), set_models_dir: () => ok({}), import_model: () => ok({ started: true }), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),

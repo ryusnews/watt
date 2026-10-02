@@ -97,11 +97,15 @@ OCR_FIXES = [  # 번역 전에 코드로 — 프롬프트로만 알려 주면 'I
 ]
 
 
+# '1DD' · '2dps' · '1tank' — 숫자에 붙은 역할을 띄워 사전이 찾게(LF 1DD RFC → '1던전', PC방 2026-10-02)
+NUM_ROLE = re.compile(r"(?i)\b(\d{1,2})(dds?|dps|tanks?|heals?|healers?)\b")
+
+
 def normalize_ocr(text: str) -> str:
     text = ocrfix.fix(text)  # 0 · O · o, 1 · l · I · | — 사전 · 상용어 · 숫자 자리로(#31)
     for rx, rep in OCR_FIXES:
         text = rx.sub(rep, text)
-    return text
+    return NUM_ROLE.sub(r"\1 \2", text)
 
 
 def fix_terms(out: str, hints: dict) -> str:
@@ -142,6 +146,50 @@ def translate_src(text: str, model: str | None = None, chinese: bool = False) ->
     out, secs = chat_json(model or MODEL, system_prompt(terms, text, chinese), text, SCHEMA)
     src = str(out.get("src", "")).strip().lower()[:2]
     return fix_terms(out.get("ko", "").strip(), terms), secs, src if src.isalpha() else ""
+
+
+BATCH_SCHEMA = {"type": "object", "properties": {"items": {"type": "array", "items": {
+    "type": "object", "properties": {"i": {"type": "integer"}, "ko": {"type": "string"}, "src": {"type": "string"}},
+    "required": ["i", "ko", "src"]}}}, "required": ["items"]}
+BATCH_MAX = 5
+
+
+def _prep(text: str, chinese: bool) -> tuple[str, dict]:
+    text = ROLE_LF.sub(r"\1 LFG", normalize_ocr(text))
+    terms = matched_terms(text, chinese)
+    if TIMEZONE.search(text):
+        terms = {k: v for k, v in terms.items() if k.lower() not in ("pst", "pm")}
+    return text, terms
+
+
+def translate_batch(items: list[tuple[str, bool]], model: str | None = None) -> tuple[list[tuple[str, str]], float]:
+    """여러 메시지를 한 번에 — [(번역, 원문 언어)], 걸린 초. 번역이 밀릴 때 통역 창이 줄 선 메시지를 묶어 부른다:
+    느린 PC(VRAM 이 모자라 모델 일부가 CPU · 공유 메모리, PC방 RTX 4060 + 와우 2개)에서 한 건씩 부르면 '표시까지' 12초,
+    밀린 것 11건이었다(2026-10-02). 각 메시지는 따로 번역하고 섞지 않는다. 결과가 이상하면(개수 · 빈 번역) ValueError —
+    부른 쪽이 한 건씩 다시."""
+    if len(items) == 1:
+        ko, secs, src = translate_src(items[0][0], model, items[0][1])
+        return [(ko, src)], secs
+    prepped = [_prep(t, c) for t, c in items]
+    joined = "\n".join(t for t, _ in prepped)
+    terms: dict = {}
+    for _, tm in prepped:
+        terms.update(tm)
+    system = system_prompt(terms, joined, any(c for _, c in items)).replace(
+        "You translate one World of Warcraft Classic chat message", "You translate each World of Warcraft Classic chat message in a numbered list")
+    system += (" The user gives a JSON list of separate messages from different players. Translate EACH one on its own — "
+               "never merge, reorder or carry words between them. Return 'items' with one entry per message: i (its number), "
+               "ko, src.")
+    user = json.dumps([{"i": n, "text": t} for n, (t, _) in enumerate(prepped)], ensure_ascii=False)
+    out, secs = chat_json(model or MODEL, system, user, BATCH_SCHEMA)  # 문맥 길이는 한 건과 같게 — 다르면 Ollama 가 모델을 다시 올린다
+    got = {int(x.get("i", -1)): x for x in out.get("items", []) if isinstance(x, dict)}
+    if sorted(got) != list(range(len(items))) or any(not str(got[n].get("ko", "")).strip() for n in got):
+        raise ValueError(f"묶음 번역 결과가 맞지 않음({len(got)}/{len(items)})")
+    res = []
+    for n, (_, tm) in enumerate(prepped):
+        src = str(got[n].get("src", "")).strip().lower()[:2]
+        res.append((fix_terms(str(got[n]["ko"]).strip(), tm), src if src.isalpha() else ""))
+    return res, secs
 
 
 def main() -> int:
