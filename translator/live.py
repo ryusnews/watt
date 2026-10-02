@@ -137,11 +137,15 @@ def looks_chinese(text: str) -> bool:
     return han >= 2 and han >= 0.25 * _letters(core)
 
 
+JAMO = re.compile(r"[ㄱ-ㅣ]")  # 자음 · 모음만(ㅋㅋ · ㄷㄷ · ㅠㅠ)
+
+
 def looks_korean(text: str) -> bool:
-    """한글 2자↑이고 글자의 절반↑([이름]·<길드> 빼고) — 한국어 엔진이 키릴·한자를 읽다 만든 가짜 한글(너, 뇌) 몇 개는 걸러진다."""
+    """한글 2자↑이고 글자의 절반↑([이름]·<길드> 빼고) — 한국어 엔진이 키릴·한자를 읽다 만든 가짜 한글(너, 뇌) 몇 개는 걸러진다.
+    자음만 쓴 말(ㅋㅋ · ㄷㄷ)도 한글로 센다 — 안 세면 중국어 엔진이 읽은 닮은 한자(彐彐 · 匚匚)를 골라 중국어로 '번역'했다(2026-10-03)."""
     core = TAGS.sub(" ", text)
-    hangul = len(HANGUL.findall(core))
-    return hangul >= 2 and hangul >= 0.5 * _letters(core)
+    hangul = len(HANGUL.findall(core)) + len(JAMO.findall(core))
+    return hangul >= 2 and hangul >= 0.5 * (_letters(core) + len(JAMO.findall(core)))
 
 
 def english_garbled(text: str) -> bool:
@@ -1370,10 +1374,17 @@ class Live:
                 cached = False
                 self.stats["translated"] += 1
                 self.stats["tr_s"] = sec
+            if m["lang"] == "zh" and not m.get("pass") and not error and m.get("ko") and not HANGUL.search(m["ko"]):
+                # 진짜 중국어는 번역하면 한글이 나온다 — 그대로 돌려받았으면 한국어 줄을 닮은 한자로 읽은 것('吲吲到卫 L 卜闷',
+                # '彐彐 4', 2026-10-03). 통역 창 · 피드에 내지 않는다
+                m["drop"] = True
             m["wait_s"] = round(time.monotonic() - t0, 2)
             self.trace.write("tr", id=m.get("id"), lang=m["lang"], tag=m.get("tag"), body=m["body"], ko=m["ko"], cached=cached,
                              queue_s=round(queue_wait, 2), llm_s=round(sec, 2), total_s=round(queue_wait + m["wait_s"], 2),
                              backlog=self.jobs.qsize(), error=error)
+            if m.get("drop"):
+                self.events.put(("drop", m))
+                continue
             self.log_item(m, m["ko"], round(sec, 2), cached)
             self.events.put(("update", m))
             if not m.get("pass"):
@@ -1412,7 +1423,11 @@ class Live:
     def poll(self):
         while not self.events.empty():
             kind, arg = self.events.get()
-            if kind in ("add", "update"):
+            if kind == "drop":  # 번역해 보니 잡음 — 통역 창에서 뺀다
+                for x in [x for x in self.overlay.items if x is arg]:
+                    self.overlay.items.remove(x)
+                self.overlay.render()
+            elif kind in ("add", "update"):
                 if kind == "add":
                     self.overlay.add(arg)
                 else:
