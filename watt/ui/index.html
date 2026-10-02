@@ -196,6 +196,8 @@
         <div class="field" data-tip="첫 번역이 기다리지 않게 모델을 미리 올려 둡니다"><span>미리 올리기</span><button class="switch" id="set-preload" role="switch" aria-label="미리 올리기"></button></div>
         <div class="field"><span>AI 실행기</span><label class="select"><select id="set-runner" aria-label="AI 실행기">
           <option value="system">PC 의 Ollama</option><option value="watt">WATT 전용</option></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
+        <div class="field" data-tip="자동: VRAM 이 모자라면 CPU 로(문장당 약 2–3초, CPU 1/4 만 써서 와우 몫을 남김)"><span>실행 장치 <small class="muted mono" id="device-now"></small></span>
+          <label class="select"><select id="set-device" aria-label="실행 장치"><option value="auto">자동</option><option value="gpu">그래픽 카드</option><option value="cpu">CPU</option></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field"><span>올라간 모델</span><span class="inline path-field"><span class="mono path" id="set-loaded">-</span>
           <button class="btn sm" id="set-unload" data-tip="VRAM 비우기 — 통역 중이면 통역을 끕니다" hidden>내리기</button></span></div>
         <div class="field" id="models-dir-field"><span>모델 위치</span><span class="inline path-field"><span class="mono path" id="set-models-dir">…</span>

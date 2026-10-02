@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -14,14 +15,44 @@ class _Url(str):
 URL = _Url()
 
 
+NUM_CTX = 2048
+_dev = {"t": -1e9, "opts": {}}
+
+
+def device_options() -> dict:
+    """번역 모델을 CPU 로 돌릴지 — settings.llm_device: auto(VRAM 이 모자라면 CPU) · gpu · cpu.
+    VRAM 이 모자라 모델 일부가 공유 메모리로 넘어가면 표시까지 12초였다(PC방 RTX 4060 + 와우 2개). CPU 만(스레드 1/4 — 와우 몫을
+    남김)이면 E2B 문장당 약 3초 · 5개 묶음 7초(Ryzen 7 9850X3D, 2026-10-02). 10분 캐시 — 자주 바뀌면 모델을 다시 올린다."""
+    if time.monotonic() - _dev["t"] < 600:
+        return _dev["opts"]
+    from watt import settings, system
+    pick = settings.load().get("llm_device") or "auto"
+    cpu = pick == "cpu"
+    if pick == "auto":
+        try:
+            cpu = system.vram_plan().get("short", 0) > 0
+        except Exception:
+            cpu = False
+    _dev.update(t=time.monotonic(), opts={"num_gpu": 0, "num_thread": max(2, (os.cpu_count() or 8) // 4)} if cpu else {})
+    return _dev["opts"]
+
+
+def reset_device() -> None:
+    _dev["t"] = -1e9
+
+
+def options(num_ctx: int = NUM_CTX) -> dict:
+    return {"temperature": 0, "num_ctx": num_ctx, **device_options()}
+
+
 def think_for(model: str):
     """추론을 끌 수 없는 모델(gpt-oss)은 가장 짧게."""
     return "low" if model.startswith("gpt-oss") else False
 
 
-def chat_json(model: str, system: str, user: str, schema: dict, keep_alive: str = "30m", num_ctx: int = 2048) -> tuple[dict, float]:
+def chat_json(model: str, system: str, user: str, schema: dict, keep_alive: str = "30m", num_ctx: int = NUM_CTX) -> tuple[dict, float]:
     body = {"model": model, "stream": False, "think": think_for(model), "format": schema, "keep_alive": keep_alive,
-            "options": {"temperature": 0, "num_ctx": num_ctx},
+            "options": options(num_ctx),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     t0 = time.monotonic()
     for attempt in (1, 2):  # 빈 본문·깨진 JSON 은 한 번 더 묻는다(gpt-oss 에서 가끔 생김)
@@ -61,7 +92,9 @@ def unload(model: str) -> bool:
 
 def preload(model: str, keep_alive: str = "30m") -> None:
     """첫 번역이 모델 올리기(수 초)를 기다리지 않게 미리 올린다."""
-    req = urllib.request.Request(URL + "/api/generate", data=json.dumps({"model": model, "keep_alive": keep_alive}).encode(),
+    # 번역과 같은 옵션으로 — 문맥 길이 · 장치가 다르면 첫 번역에서 다시 올려 미리 올린 보람이 없다
+    req = urllib.request.Request(URL + "/api/generate", data=json.dumps({"model": model, "keep_alive": keep_alive,
+                                                                         "options": options()}).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=120).read()

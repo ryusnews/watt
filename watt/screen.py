@@ -64,7 +64,7 @@ def list_windows(games_only: bool = True) -> list[dict]:
         user32.GetWindowTextW(hwnd, title, 256)
         if not games_only and not title.value:
             return True
-        found.append({"hwnd": hwnd, "exe": exe, "path": path, "title": title.value,
+        found.append({"hwnd": hwnd, "pid": pid.value, "exe": exe, "path": path, "title": title.value,
                       "x": pt.x, "y": pt.y, "w": r.right, "h": r.bottom})
         return True
 

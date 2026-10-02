@@ -168,7 +168,7 @@ function renderHome() {
   const ocrOk = st.ocr.langs.filter((l) => l.installed).length;
   const ocrMiss = st.ocr.langs.filter((l) => !l.installed).map((l) => l.label);
   stat('#st-ai', st.ollama.running ? (st.models.find((x) => x.name === st.settings.model)?.installed ? 'ok' : 'warn') : 'err',
-    st.ollama.running ? st.settings.model : '꺼짐');
+    st.ollama.running ? st.settings.model + (st.vram && st.vram.device === 'cpu' ? ' · CPU' : '') : '꺼짐');
   const aiCovers = ocrMiss.length && st.steps && st.steps.ocr === 'done';  // 빠진 언어 팩을 AI 글자 인식이 대신 읽음
   stat('#st-ocr', ocrMiss.length && !aiCovers ? 'warn' : 'ok', !ocrMiss.length ? `${ocrOk}개 언어` : aiCovers ? `${ocrOk}개 + AI` : `${ocrMiss[0]} 없음`);
   stat('#st-game', st.game ? 'ok' : 'off', st.game ? (st.game.flavor || st.game.exe) : '꺼짐');
@@ -377,9 +377,10 @@ const DETAIL = {
       : !m.installed ? `<button class="btn primary" data-act="pull_model">${icon('i-download', 'sm')}받기</button>`
       : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>` : '<span class="badge ok">사용 중</span>';
     const v = st.vram;
-    const vramLine = v && v.available != null ? `<div class="facts vram-facts" data-tip="지금 쓰는 VRAM ${v.used}GB / ${v.total}GB${v.wow ? ' · 와우 켜짐' : ` · 와우 꺼짐 — 켜면 약 ${v.wow_est}GB 더 씀(예상)`}${v.watt_loaded ? ` · 지금 올린 WATT 모델 ${v.watt_loaded}GB 포함` : ''}">
+    const vramLine = v && v.available != null ? `<div class="facts vram-facts" data-tip="지금 쓰는 VRAM ${v.used}GB / ${v.total}GB${v.wow ? ` · 와우 켜짐(약 ${v.wow_gb}GB)` : ` · 와우 꺼짐 — 켜면 약 ${v.wow_est}GB 더 씀(${v.wow_how === 'resolution' ? '해상도로 어림' : '이 PC 에서 잰 값'})`}${v.watt_loaded ? ` · 지금 올린 WATT 모델 ${v.watt_loaded}GB 포함` : ''}">
       ${icon('i-gauge', 'sm')}<span>번역 모델에 쓸 VRAM <b>${v.available}GB</b></span><span class="muted">${v.wow ? '와우 켜진 지금 기준' : '와우 몫 빼고'}</span></div>
-      ${v.short > 0 ? `<div class="err-text">VRAM ${v.short}GB 부족 — 일부를 CPU 로 돌려 번역이 느려집니다${v.wows > 1 ? ` · 와우 창 ${v.wows}개 중 하나를 닫거나` : ''} 와우 그래픽 설정(해상도 · 텍스처)을 낮추면 남습니다</div>` : ''}` : '';
+      ${v.short > 0 && v.device === 'cpu' ? `<div class="facts">${icon('i-chip', 'sm')}<span>VRAM ${v.short}GB 부족 — <b>CPU 로 번역</b>합니다(문장당 약 2–3초)</span></div>`
+        : v.short > 0 ? `<div class="err-text">VRAM ${v.short}GB 부족 — 일부를 공유 메모리로 돌려 번역이 느려집니다 · 번역 설정 → 실행 장치를 '자동'이나 'CPU'로${v.wows > 1 ? ` · 와우 창 ${v.wows}개 중 하나를 닫기` : ''}</div>` : ''}` : '';
     const terms = `${vramLine}<p class="terms-line">받으면 Google <a href="#" data-url="https://ai.google.dev/gemma/terms">Gemma 이용 약관</a>에 동의하는 것으로 봅니다</p>`;
     return [`<div class="models">${cards}</div>${terms}${box}`, action];
   },
@@ -496,7 +497,14 @@ function renderModelsDir() {
   $('#set-models-pick').disabled = !!run;
   $('#set-models-reset').hidden = !m.custom || !!run;
 }
+function renderDevice() {
+  const el = $('#set-device'); if (!el || !S.state) return;
+  el.value = S.state.settings.llm_device || 'auto';
+  const v = S.state.vram;
+  $('#device-now').textContent = v ? (v.device === 'cpu' ? 'CPU' : '그래픽 카드') : '';
+}
 function renderLoaded() {
+  renderDevice();
   const o = S.state && S.state.ollama; if (!o || !$('#set-loaded')) return;
   const names = (o.loaded || []).map((m) => m.name);
   $('#set-loaded').textContent = names.length ? names.join(', ') : '없음';
@@ -886,6 +894,7 @@ function bind() {
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
+  $('#set-device').onchange = (e) => { save({ llm_device: e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); setTimeout(() => refresh(true), 800); };
   $('#set-unload').onclick = async () => {
     const live = S.live && S.live.running && (S.live.running.live || S.live.running.input);
     if (live && !(await confirmBox('모델 내리기', '통역 · 입력창을 끄고 내립니다 — 켜 두면 다음 번역에 다시 올라옵니다', '끄고 내리기', '취소', false))) return;

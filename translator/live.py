@@ -1078,6 +1078,8 @@ class Live:
             self.trace.enabled = bool(cfg["keep_logs"])
             self.overlay.apply(cfg)
             incoming.MODEL = cfg["model"]
+            from . import llm
+            llm.reset_device()  # 실행 장치(llm_device)를 바꿨을 수 있다
             self.apply_ai(cfg)
         m = mtime(paths.REGION_GOOD)
         if m != self.seen_mtimes.get("region"):

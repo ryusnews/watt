@@ -110,7 +110,50 @@ def recommend_model(vram_gb: float) -> str:
     return MODELS[-1]["name"]
 
 
-WOW_VRAM_GB = 4.0   # 와우 클래식이 쓰는 VRAM 예상(이 PC 1920×1009: 와우를 켜고 다른 것 없이 전체 5.9GB 중 4–5GB, 2026-10-02)
+WOW_VRAM_GB = 4.0   # 와우 몫 기본 어림(1920×1009 에서 4–5GB) — 이 PC 에서 잰 값이 있으면 그것(wow_vram)
+_wow_cache: list = [0.0, None]
+
+
+def _wow_measure(pids: list[int]) -> float | None:
+    """와우 프로세스들이 쓰는 전용 VRAM(GB) — Windows 성능 카운터(GPU Process Memory), 5분 캐시."""
+    if time.monotonic() - _wow_cache[0] < 300:
+        return _wow_cache[1]
+    got = None
+    try:
+        q = ",".join(f"'\\GPU Process Memory(pid_{p}_*)\\Dedicated Usage'" for p in pids)
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              f"(Get-Counter {q} -ErrorAction SilentlyContinue).CounterSamples | ForEach-Object {{ $_.CookedValue }}"],
+                             capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
+        vals = [float(x) for x in out.stdout.split() if x.replace(".", "").replace(",", "").isdigit()]
+        got = sum(vals) / 1024 ** 3 if vals else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    _wow_cache[:] = [time.monotonic(), got]
+    return got
+
+
+def wow_vram(pids: list[int] | None = None) -> tuple[float, str]:
+    """와우 몫(GB)과 근거 — 켜져 있으면 재서 기억(PC방 와우 포에버 2560×1440: 약 5GB, 기본 어림 4GB 보다 컸다),
+    꺼져 있으면 기억한 값, 없으면 화면 해상도로 어림(1080p 3.5 · 1440p 5 · 4K 6GB)."""
+    f = paths.DATA / "wow_vram.json"
+    try:
+        saved = json.loads(f.read_text(encoding="utf-8")).get("gb")
+    except (OSError, ValueError):
+        saved = None
+    if pids:
+        now = _wow_measure(pids)
+        if now and now > 0.5:
+            gb = now if not saved else max(now, 0.8 * saved + 0.2 * now)  # 큰 쪽으로 — 모자라는 것보다 낫다
+            try:
+                paths.ensure()
+                f.write_text(json.dumps({"gb": round(gb, 2), "t": time.strftime("%Y-%m-%dT%H:%M:%S")}), encoding="utf-8")
+            except OSError:
+                pass
+            return gb, "measured"
+    if saved:
+        return saved, "remembered"
+    px = ctypes.windll.user32.GetSystemMetrics(0) * ctypes.windll.user32.GetSystemMetrics(1)
+    return (3.5 if px <= 2.2e6 else 5.0 if px <= 3.8e6 else 6.0), "resolution"
 MARGIN_GB = 0.8     # 여유 — 창 · 브라우저 · 드라이버가 조금씩 더 쓴다
 _vram_cache: list = [0.0, None]
 
@@ -152,24 +195,30 @@ def vram_plan(ai_gpu: bool = False) -> dict:
     total = best["vram_gb"] if best else 0
     used = vram_used_gb()
     from . import screen
-    wows = len(screen.list_windows(True))
+    wins = screen.list_windows(True)
+    wows = len(wins)
     wow = wows > 0
+    wow_gb, wow_how = wow_vram([w["pid"] for w in wins] if wow else None)
     watt_loaded = 0.0
     try:
         mine = {m["name"]: m["vram_gb"] for m in MODELS}
-        watt_loaded = sum(mine.get(m["name"], 0) for m in runner.status().get("loaded", []))
+        # GPU 에 올라간 것만 돌려받는다(CPU 로 돌리는 중이면 VRAM 을 쓰지 않는다 — size_vram 0)
+        watt_loaded = sum(mine.get(m["name"], 0) for m in runner.status().get("loaded", []) if m.get("vram_gb", 0) > 0)
     except Exception:
         pass
     if used is None:
         return {"total": total, "used": None, "wow": wow, "wow_est": 0, "available": None,
                 "pick": recommend_model(total)}
-    avail = total - used + watt_loaded - (0 if wow else WOW_VRAM_GB) - (1.5 if ai_gpu else 0) - MARGIN_GB
+    avail = total - used + watt_loaded - (0 if wow else wow_gb) - (1.5 if ai_gpu else 0) - MARGIN_GB
     fit = next((m for m in MODELS if m["vram_gb"] <= avail), None)
     pick = (fit or MODELS[-1])["name"]
     # 다 안 들어가면 Ollama 가 일부를 CPU 로 돌린다 — 느려진다. 와우 창을 줄이거나 그래픽 설정을 낮추면 남는다
     short = 0 if fit else round(MODELS[-1]["vram_gb"] - avail, 1)
-    return {"total": round(total, 1), "used": round(used, 1), "wow": wow, "wows": wows, "wow_est": 0 if wow else WOW_VRAM_GB,
-            "watt_loaded": round(watt_loaded, 1), "available": round(avail, 1), "pick": pick, "short": short}
+    from . import settings
+    dev = settings.load().get("llm_device") or "auto"
+    return {"total": round(total, 1), "used": round(used, 1), "wow": wow, "wows": wows, "wow_est": 0 if wow else round(wow_gb, 1),
+            "wow_gb": round(wow_gb, 1), "wow_how": wow_how, "watt_loaded": round(watt_loaded, 1), "available": round(avail, 1),
+            "pick": pick, "short": short, "device": dev if dev != "auto" else ("cpu" if short > 0 else "gpu"), "device_pick": dev}
 
 
 # ---- 관리자 권한으로 실행(UAC) 후 끝날 때까지 기다리기
@@ -387,7 +436,9 @@ def model_delete(name: str) -> dict:
 def model_warm(name: str) -> float:
     """모델을 GPU 에 올려 둔다(첫 번역이 기다리지 않게). 걸린 초."""
     t0 = time.monotonic()
-    req = urllib.request.Request(OLLAMA_URL + "/api/generate", data=json.dumps({"model": name, "keep_alive": "30m"}).encode(),
+    from translator import llm
+    req = urllib.request.Request(OLLAMA_URL + "/api/generate", data=json.dumps({"model": name, "keep_alive": "30m",
+                                                                                "options": llm.options()}).encode(),
                                  headers={"Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=300).read()
     return round(time.monotonic() - t0, 1)
