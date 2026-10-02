@@ -194,7 +194,7 @@ def maybe_reload() -> None:
 
 
 def target_name(entry: dict, lang: str) -> str:
-    if lang == "en":
+    if lang == "en" or (lang == "ja" and entry.get("type") in ("dungeon", "raid", "wing")):  # 일본 사용자도 던전은 RFC, WC
         abbr = (entry.get("en_abbr") or [None])[0]
         return f"{abbr} ({entry['en']})" if abbr and abbr.lower() != entry["en"].lower() else entry["en"]
     key = "zh" if lang == "tw" else lang  # 번체는 간체 이름을 주고 모델이 번체로 쓴다

@@ -25,6 +25,11 @@ LANGS = [("en", "영어", "English"), ("zh", "중국어", "Simplified Chinese"),
          ("ru", "러시아어", "Russian"), ("es", "스페인어", "Spanish"), ("de", "독일어", "German"), ("fr", "프랑스어", "French"),
          ("pt", "포르투갈어", "Brazilian Portuguese"), ("ja", "일본어", "Japanese")]
 HISTORY = paths.LOGS / "outgoing.jsonl"
+HANGUL = re.compile(r"[가-힣]+")
+# '귓속말 주세요'를 그 나라 사람들이 쓰는 말로 — 일본어로 '이름을 알려 주세요'라고 옮겼다(#38)
+WHISPER = {"ja": "'/w ください' or 'ウィスください'", "zh": "'密我'", "tw": "'密我'", "ru": "'пиши в лс' or '/w'",
+           "es": "'susurrad' or 'MD'", "de": "'/w mich' or 'flüstert mich an'", "fr": "'mp moi' or '/w'",
+           "pt": "'chama no pv' or '/w'"}
 SCHEMA = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
 
@@ -42,9 +47,19 @@ def system_prompt(lang: str, lang_name: str, terms: dict) -> str:
     if lang == "en":
         s += ("Recruiting others (구해요/구함/구인 + a role or dungeon) is 'LF <role>' or 'LFM'; 'LFG' only when the writer "
               "wants to join someone else's group. ")
+    elif lang == "ja":  # 일본어판 클라이언트가 없어 일본 사용자도 영어 이름 · 줄임말을 쓴다
+        s += ("Write it in Japanese (ordinary words in Japanese: quest = クエスト, tank = タンク). Only dungeon and raid names "
+              "stay as the English abbreviations given below (RFC, WC, SFK) — there is no Japanese client, never invent "
+              "Japanese names for them. ")
     else:
         s += (f"Write the whole message in {lang_name}. Do not switch to English words or English chat abbreviations "
               f"(LF, LFG, SFK …) — write it the way {lang_name}-speaking players do. ")
+    if lang == "tw":  # 사전 이름은 간체 — 번체로 바꿔 쓰고 한글을 남기지 않는다(通곡)
+        s += "Use Traditional Chinese characters; convert the Simplified game terms below to Traditional. Never leave Korean. "
+    if lang in WHISPER:
+        s += f"'귓 주세요' / '귓' means 'whisper me' — write it as {WHISPER[lang]}, never as asking for a name. "
+    s += ("Translate short questions literally with the same meaning (기능 = feature: '번역기능 되나?' = 'Does the translation "
+          "feature work?'). ")
     s += f"At most {MAX_LEN} characters. Put only the translated message in 'text'."
     if terms:
         s += (f" Game terms in this message (Korean chat word = what {lang_name} players write"
@@ -57,6 +72,13 @@ def translate(text: str, lang: str = "en", model: str = MODEL, log: bool = True)
     lang_name = next(n for c, _, n in LANGS if c == lang)
     out, secs = chat_json(model, system_prompt(lang, lang_name, terms_for(text, lang)), text, SCHEMA)
     result = out.get("text", "").strip().strip('"').replace("\n", " ")[:MAX_LEN]
+    if HANGUL.search(result):  # 한글이 남았다(번체: 通곡) — 한 번 더, 남은 말을 짚어서
+        out, more = chat_json(model, system_prompt(lang, lang_name, terms_for(text, lang))
+                              + f" Your last answer '{result}' still had Korean ({' '.join(HANGUL.findall(result))})"
+                              " — translate it fully.", text, SCHEMA)
+        secs += more
+        again = out.get("text", "").strip().strip('"').replace("\n", " ")[:MAX_LEN]
+        result = again if again and not HANGUL.search(again) else result
     if not log:  # 평가 등 — 사용자 기록에 섞지 않는다
         return result, secs
     HISTORY.parent.mkdir(exist_ok=True)

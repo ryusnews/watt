@@ -23,6 +23,8 @@ SCRIPTS = {
     "ja": lambda t: re.search(r"[぀-ヿ]", t) and not re.search(r"[가-힣]", t),
     "ko": lambda t: re.search(r"[가-힣]", t),
 }
+for _lg in ("es", "de", "fr", "pt"):  # 라틴 문자 — 한글 · 한자가 섞이지 않으면
+    SCRIPTS[_lg] = lambda t: not re.search(r"[가-힣一-鿿぀-ヿ]", t)
 
 
 def wait_for_games() -> None:
