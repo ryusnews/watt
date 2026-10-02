@@ -37,29 +37,56 @@ def exe_of_pid(pid: int) -> str:
         kernel32.CloseHandle(h)
 
 
-def find_game_window() -> dict | None:
-    """보이는 WoW 창 중 가장 큰 것: {hwnd, exe, path, x, y, w, h}(클라이언트 영역, 화면 좌표)."""
+def list_windows(games_only: bool = True) -> list[dict]:
+    """보이는 창: {hwnd, exe, path, title, x, y, w, h}(클라이언트 영역, 화면 좌표). games_only 면 WoW 실행 파일만."""
     found = []
     enum_proc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    own = kernel32.GetCurrentProcessId()
 
     def cb(hwnd, _):
         if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
             return True
         pid = wt.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == own:
+            return True
         path = exe_of_pid(pid.value)
-        if path.rsplit("\\", 1)[-1].lower() in GAME_EXES:
-            r = wt.RECT()
-            user32.GetClientRect(hwnd, ctypes.byref(r))
-            pt = wt.POINT(0, 0)
-            user32.ClientToScreen(hwnd, ctypes.byref(pt))
-            if r.right > 200 and r.bottom > 200:
-                found.append({"hwnd": hwnd, "exe": path.rsplit("\\", 1)[-1], "path": path,
-                              "x": pt.x, "y": pt.y, "w": r.right, "h": r.bottom})
+        exe = path.rsplit("\\", 1)[-1]
+        if games_only and exe.lower() not in GAME_EXES:
+            return True
+        r = wt.RECT()
+        user32.GetClientRect(hwnd, ctypes.byref(r))
+        if r.right <= 200 or r.bottom <= 200:
+            return True
+        pt = wt.POINT(0, 0)
+        user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        title = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(hwnd, title, 256)
+        if not games_only and not title.value:
+            return True
+        found.append({"hwnd": hwnd, "exe": exe, "path": path, "title": title.value,
+                      "x": pt.x, "y": pt.y, "w": r.right, "h": r.bottom})
         return True
 
     user32.EnumWindows(enum_proc(cb), 0)
+    return found
+
+
+def find_game_window() -> dict | None:
+    """게임 창: 사용자가 고른 실행 파일(settings.game_exe)이 있으면 그것, 없으면 보이는 WoW 창 중 가장 큰 것.
+    PC방 등에서 실행 파일 이름이 다르거나 창이 여럿이면 런처의 채팅 영역 단계에서 고른다."""
+    try:
+        from . import settings
+        pick = (settings.load().get("game_exe") or "").lower()
+    except Exception:
+        pick = ""
+    found = [w for w in list_windows(games_only=not pick) if not pick or w["exe"].lower() == pick] or list_windows()
     return max(found, key=lambda f: f["w"] * f["h"]) if found else None
+
+
+def black(img: np.ndarray | None) -> bool:
+    """까만 화면(캡처가 막혔거나 전체 화면 독점 모드) — 띄엄띄엄 봐서 가장 밝은 값이 8 이하."""
+    return img is None or img.size == 0 or int(img[::16, ::16, :3].max()) <= 8
 
 
 # ---- 캡처
@@ -145,7 +172,15 @@ def _wgc_grab(win: dict, x: int, y: int, w: int, h: int) -> np.ndarray | None:
         for _ in range(10):  # 시작 직후에는 첫 프레임을 잠깐 기다린다
             img = _wgc["cap"].grab(x, y, w, h)
             if img is not None:
-                return img
+                if not black(img):
+                    _wgc["dark"] = 0
+                    return img
+                # 까만 화면 — 이 PC 에서는 그래픽 캡처가 막혔을 수 있다. 여러 번 이어지면 끄고 GDI 로
+                _wgc["dark"] = _wgc.get("dark", 0) + 1
+                if _wgc["dark"] >= 20:
+                    logging.getLogger("watt").warning("Windows 그래픽 캡처가 까만 화면만 줘서 GDI 로")
+                    _wgc["off"] = True
+                return None
             time.sleep(0.03)
     except Exception as e:  # 지원하지 않는 Windows · 드라이버 — 지금 방식으로
         logging.getLogger("watt").warning("Windows 그래픽 캡처를 쓸 수 없어 GDI 로: %s", e)

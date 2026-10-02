@@ -6,6 +6,7 @@ python -m tools.eval_ocr --show          # 틀린 것도 보이기
 정답 표본(eval/private/ — 저장소에 올리지 않는다): gt.json {"frames": {"frames/x.png": [[채널, 이름, 언어, 본문], ...]}}
 화면은 WATT 가 읽는 그대로(2배 확대 → 4엔진 → 줄 고르기 → 메시지 나누기). 정답 메시지와 읽은 메시지를 하나씩 짝짓는다.
 """
+import os
 import argparse
 import difflib
 import json
@@ -106,7 +107,7 @@ def main() -> int:
     a = ap.parse_args()
     gt_path = Path(a.gt)
     frames = json.loads(gt_path.read_text(encoding="utf-8"))["frames"]
-    eng = ocr.Ocr()
+    eng = ocr.Ocr(os.environ["WATT_EVAL_ENGINES"].split(",") if os.environ.get("WATT_EVAL_ENGINES") else None)  # 언어 팩이 빠진 PC 흉내
     if a.ai:
         from watt import aiocr
         if a.models:

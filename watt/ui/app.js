@@ -39,7 +39,7 @@ window.WATT = {
         if (ev.task === 'ocr') toast('글자 인식 언어 팩을 확인했습니다', 'ok');
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
         if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
-        if (ev.task === 'ai') { toast('AI 글자 인식 모델을 받았습니다', 'ok'); call('get_ai').then((x) => { S.ai = x; renderSetup(); }); }
+        if (ev.task === 'ai') { toast('AI 글자 인식 모델을 받았습니다', 'ok'); call('get_ai').then((x) => { S.ai = x; refresh(true); }); }
         if (ev.task === 'update' && ev.result && ev.result.opened) toast('릴리스 페이지를 열었습니다');
         if (ev.task === 'update' && ev.result && ev.result.ready) { if (S.update) S.update.ready = ev.result.ready; askRestart(ev.result.ready); }
       }
@@ -299,8 +299,13 @@ const DETAIL = {
     const removable = S.state.removable_ocr || [];
     const chips = langs.map((l) => `<span class="chip ${l.installed ? 'ok' : 'bad'}">${icon(l.installed ? 'i-check' : 'i-ocr')}${esc(l.label)}${
       l.installed && removable.includes(l.code) && !run ? `<button class="chip-x" data-act="remove_ocr" data-code="${esc(l.code)}" data-label="${esc(l.label)}" aria-label="${esc(l.label)} 언어 팩 지우기" data-tip="언어 팩 지우기">${icon('i-x')}</button>` : ''}</span>`).join('');
-    const action = miss.length ? `<button class="btn primary" data-act="install_ocr" ${run ? 'disabled' : ''} data-tip="Windows 권한 확인 창이 뜹니다">${icon('i-shield', 'sm')}${run ? '설치 중' : '설치'}</button>` : '';
-    return [`<div class="chips">${chips}</div>${run ? '<div class="progress indet"><i></i></div>' : ''}`, action];
+    // 언어 팩을 깔 수 없는 PC(PC방 — DISM '액세스가 거부되었습니다')는 AI 글자 인식이 그 언어를 대신 읽는다
+    const covered = S.state.steps && S.state.steps.ocr === 'done';
+    const aiRun = S.progress.ai || S.state.busy.includes('ai');
+    const action = miss.length && !covered ? `<span class="inline"><button class="btn" data-act="cover_ocr_with_ai" ${run || aiRun ? 'disabled' : ''} data-tip="관리자 권한 없이 — AI 글자 인식 모델을 WATT 폴더에 받아 대신 읽기">${icon('i-chip', 'sm')}${aiRun ? '받는 중' : 'AI로 대신'}</button>
+      <button class="btn primary" data-act="install_ocr" ${run || aiRun ? 'disabled' : ''} data-tip="Windows 권한 확인 창이 뜹니다">${icon('i-shield', 'sm')}${run ? '설치 중' : '설치'}</button></span>` : '';
+    const note = miss.length && covered ? `<div class="facts"><span class="okx">${icon('i-chip', 'sm')}AI 글자 인식이 대신 읽음</span></div>` : '';
+    return [`<div class="chips">${chips}</div>${note}${run || aiRun ? '<div class="progress indet"><i></i></div>' : ''}`, action];
   },
   ai() {
     // 권장: 한국어 · 중국어 · 러시아어 — Windows OCR 만으로는 정답 표본 메시지 찾음 97.4% · 이름 91.9%, AI 를 켜면 99.6% · 97.8%
@@ -378,6 +383,14 @@ const DETAIL = {
     const r = S.state.region, run = S.progress.region || S.state.busy.includes('region');
     const res = S.results.region;
     const img = S.regionPreview ? `<img src="${S.regionPreview}" alt="찾은 채팅 영역">` : icon('i-frame', 'xl thin');
+    // 게임 창 고르기 — 실행 파일 이름이 다르거나 창이 여럿일 때(PC방)
+    if (!S.windows) call('list_windows').then((x) => { S.windows = x; renderSetup(); });
+    const wl = S.windows || { games: [], others: [] };
+    const opt = (w) => `<option value="${esc(w.exe)}" ${wl.picked && wl.picked.toLowerCase() === w.exe.toLowerCase() ? 'selected' : ''}>${esc(w.exe)} · ${esc((w.title || '').slice(0, 24))} · ${w.w}×${w.h}</option>`;
+    const pick = `<div class="win-pick">${icon('i-game', 'sm')}<label class="select"><select id="game-win" aria-label="게임 창">
+      <option value="" ${wl.picked ? '' : 'selected'}>${wl.current && !wl.picked ? esc(wl.current) : '자동'}</option>
+      ${wl.games.map(opt).join('')}${wl.others.length ? `<optgroup label="다른 창">${wl.others.map(opt).join('')}</optgroup>` : ''}
+    </select>${icon('i-chev', 'sm')}</label><button class="icon-btn sq" data-act="reload_windows" aria-label="창 목록 새로" data-tip="창 목록 새로">${icon('i-refresh', 'sm')}</button></div>`;
     const facts = r ? `<div class="facts"><span class="okx">${icon('i-check', 'sm')}${r.w}×${r.h}</span><span>${r.line_h}px</span>${r.lines ? `<span>${r.lines}줄</span>` : ''}</div>` : '';
     const err = res && res.error ? `<div class="err-text">${esc(res.error)}</div>` : '';
     const tips = [['i-bg', '검정 배경', '채팅 배경을 불투명한 검정으로'], ['i-type', '글자 14+', '글자 크기 14 이상'],
@@ -386,7 +399,7 @@ const DETAIL = {
     const action = `<span class="inline"><button class="icon-btn sq" data-act="pick_region" ${run ? 'disabled' : ''} aria-label="직접 지정" data-tip="게임 화면에서 채팅창을 끌어서 지정">${icon('i-crop', 'sm')}</button>
       <button class="icon-btn sq" data-act="report_region" ${run ? 'disabled' : ''} aria-label="인식 오류 신고" data-tip="잘못 찾았을 때 화면을 보내 고치는 데 쓰기">${icon('i-flag', 'sm')}</button>
       <button class="btn ${r ? '' : 'primary'}" data-act="find_region" ${run ? 'disabled' : ''} data-tip="게임이 켜져 있어야 합니다">${icon('i-target', 'sm')}${run ? '찾는 중' : r ? '다시 찾기' : '찾기'}</button></span>`;
-    return [`<div class="preview">${img}</div>${run ? '<div class="progress indet"><i></i></div>' : facts}${err}<div class="chips">${tips}</div>`, action];
+    return [`${pick}<div class="preview">${img}</div>${run ? '<div class="progress indet"><i></i></div>' : facts}${err}<div class="chips">${tips}</div>`, action];
   },
   test() {
     const run = S.progress.test || S.state.busy.includes('test'), res = S.results.test;
@@ -436,6 +449,8 @@ async function act(name, d = {}) {
   if (name === 'pick_folder') return pickFolder();
   if (name === 'install_addon') { const r = await call('install_addon', S.selGame); toast(`글꼴 애드온 ${r.version || ''} 설치됨. 게임을 다시 켜 주세요`, 'ok'); return loadGames().then(() => refresh(true)); }
   if (name === 'find_region') { S.results.region = null; return call('find_region'); }
+  if (name === 'cover_ocr_with_ai') { const r = await call('cover_ocr_with_ai'); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return refresh(true); }
+  if (name === 'reload_windows') { S.windows = await call('list_windows'); return renderSetup(); }
   if (name === 'pick_region') return openShot('pick');
   if (name === 'report_region') return openShot('report');
   if (name === 'test_translate') { S.testKo = ($('#test-ko') || {}).value || ''; S.results.test = null; return call('test_translate', S.testKo); }
@@ -853,6 +868,13 @@ function bind() {
   $('#term-add').onclick = () => editTerm(null);
   $('#term-rows').onclick = (ev) => { const r = ev.target.closest('.tr[data-id]'); if (r) editTerm((S.terms || []).find((t) => t.id === r.dataset.id)); };
   // 바깥 링크는 기본 브라우저로(정해 둔 주소만 — watt/app.py LINKS)
+  // 게임 창 고르기(채팅 영역 단계) — 고르면 저장하고 바로 다시 찾기
+  document.addEventListener('change', async (e) => {
+    if (e.target.id !== 'game-win') return;
+    S.windows = await call('pick_window', e.target.value);
+    S.regionPreview = null; S.results.region = null; renderSetup();
+    act('find_region');
+  });
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-url]'); if (!a) return;
     e.preventDefault(); call('open_url', a.dataset.url);
@@ -939,6 +961,10 @@ function mockApi() {
     get_shot: () => ok({ img: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#2b3240"/><rect x="10" y="560" width="520" height="260" fill="#000" opacity=".6"/></svg>'), w: 1600, h: 900, found: { x: 10, y: 560, w: 520, h: 260 }, report: { can: true, wait_h: 0 } }),
     set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
+    list_windows: () => ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],
+      others: [{ exe: 'chrome.exe', title: 'Chrome', w: 1200, h: 900 }], picked: settings.game_exe || '', current: 'WowB.exe' }),
+    pick_window: (exe) => { settings.game_exe = exe; return ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],
+      others: [{ exe: 'chrome.exe', title: 'Chrome', w: 1200, h: 900 }], picked: exe, current: exe || 'WowB.exe' }); },
     get_ai: () => ok({ langs: settings.ai_langs || [], gpu: settings.ai_gpu !== false, runtime: (settings.ai_langs || []).length > 0,
       models: { det: true, ko: false, zh: (settings.ai_langs || []).includes('zh'), ru: false, latin: false }, active: settings.ai_langs || [], active_gpu: true, error: null, disk: (settings.ai_langs || []).length ? 96e6 : 0,
       sizes: { runtime: 25111930, det: 9929594, ko: 13488748, zh: 21234383, ru: 8074092, latin: 7904513 } }),

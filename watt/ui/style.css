@@ -261,6 +261,9 @@ button.chip { border: 0; cursor: pointer; } button.chip:hover { background: var(
 .game .p { display: block; font: 500 11.5px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .game.off { opacity: .45; pointer-events: none; }
 .preview { width: 516px; max-width: 100%; min-height: 120px; background: #000; box-shadow: 0 0 0 1.5px var(--teal); display: grid; place-items: center; color: var(--dim); }
+.win-pick { width: 516px; max-width: 100%; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--muted); }
+.win-pick .select { flex: 1; min-width: 0; }
+.win-pick .select select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .preview img { display: block; width: 100%; }
 .facts { display: flex; align-items: center; gap: 16px; font: 500 12.5px var(--mono); color: var(--muted); }
 .facts .okx { display: flex; align-items: center; gap: 6px; color: var(--ok); }

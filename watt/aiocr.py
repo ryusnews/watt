@@ -55,6 +55,9 @@ NEED = {"ko": lambda h: len(_HANGUL.findall(h.get("ko", ""))) >= 2,
         "zh": lambda h: bool(_HAN.search(h.get("ko", ""))) or len(_LATIN.findall(h.get("en-US", ""))) >= 6,  # 영어 본문도(live.pick_lines)
         "ru": lambda h: len(_CYR.findall(h.get("ru-RU", ""))) >= 3,
         "latin": lambda h: len(_LATIN.findall(h.get("en-US", ""))) >= 6}
+GATE = {"ko": {"ko"}, "zh": {"ko", "en-US"}, "ru": {"ru-RU"}, "latin": {"en-US"}}  # NEED 가 보는 Windows 엔진
+# Windows OCR 언어 팩 → 대신 읽을 수 있는 AI 모델(언어 팩을 깔 수 없는 PC — DISM '액세스가 거부되었습니다', PC방 2026-10-02)
+COVERS = {"ko": "ko", "zh-Hans-CN": "zh", "ru-RU": "ru", "en-US": "zh"}
 
 
 def import_runtime():
@@ -288,10 +291,12 @@ class AiOcr:
             c, hh = (a + b) / 2, (b - a) * self.CORE_H
             ink_rows[bx] = (int(c - hh / 2), int(c + hh / 2))
         out = {}
+        have = set(hints or {})
         for lg in self.rec:
             # 읽을 화면(새 줄 띠)에 그 언어가 한 줄이라도 보이면 전부, 없으면 그 모델은 건너뛴다. 줄마다 고르면 같은 메시지의
             # 머리 줄(Windows 가 Гільдія 를 TinbAia 로 읽음)을 건너뛰어 이름이 사라졌다(정답 표본 이름 98 → 95%)
-            idx = list(range(len(boxes))) if hints is None or any(NEED[lg](x) for x in texts) else []
+            blind = not have.issuperset(GATE[lg])  # 볼 엔진이 없다 — 늘 읽는다
+            idx = list(range(len(boxes))) if hints is None or blind or any(NEED[lg](x) for x in texts) else []
             crops = [bgr[boxes[i][1]:boxes[i][3], boxes[i][0]:boxes[i][2]] for i in idx]
             got = self.recognize(lg, crops) if crops else []
             ls = []

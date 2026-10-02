@@ -116,7 +116,7 @@ class Api:
         live = self._live_status()
         steps = {
             "system": "done",
-            "ocr": "done" if not oc["missing"] else "todo",
+            "ocr": "done" if not self._ocr_gap(oc, cfg) else "todo",
             # AI 글자 인식(권장, #83) — 켠 언어가 있고 그 모델을 받아 두었으면 done. 필수 단계는 아니다
             "ai": "done" if cfg.get("ai_langs") and self._ai_ready(cfg["ai_langs"]) else "todo",
             "ollama": "done" if ol["running"] else "todo",
@@ -319,6 +319,19 @@ class Api:
         return {"langs": cfg["ai_langs"], "gpu": cfg["ai_gpu"], **aipack.status(),
                 "active": live.get("ai") if time.time() - live.get("t", 0) < 10 else None, "active_gpu": live.get("ai_gpu"),
                 "error": live.get("ai_error")}
+
+    def _ocr_gap(self, oc: dict, cfg: dict) -> list[str]:
+        """빠진 Windows OCR 언어 팩 중 AI 글자 인식이 대신하지 못하는 것 — 언어 팩을 못 까는 PC 는 AI 로 채운다."""
+        from . import aiocr
+        ai = set(cfg.get("ai_langs") or [])
+        return [c for c in oc["missing"] if not (aiocr.COVERS.get(c) in ai and self._ai_ready([aiocr.COVERS[c]]))]
+
+    @_logged
+    def cover_ocr_with_ai(self) -> dict:
+        """빠진 언어 팩 대신 AI 글자 인식 — 그 언어 모델을 받아 켠다(관리자 권한 · DISM 없이, WATT 데이터 폴더에만)."""
+        from . import aiocr
+        need = sorted({aiocr.COVERS[c] for c in system.ocr_status()["missing"] if c in aiocr.COVERS})
+        return self.enable_ai(need) if need else {"langs": []}
 
     @staticmethod
     def _ai_ready(langs: list[str]) -> bool:
@@ -589,6 +602,24 @@ class Api:
             img = screen.capture_game(rect["x"], rect["y"], rect["w"], rect["h"])
             return {"region": r, "preview": "data:image/png;base64," + base64.b64encode(screen.png_bytes(img)).decode()}
         return self._task("region", work)
+
+    @_logged
+    def list_windows(self) -> dict:
+        """게임 창 고르기 — WoW 창 먼저, 그다음 다른 창(실행 파일 이름이 다를 때). WATT 창은 빼고."""
+        screen.dpi_aware()
+        games = screen.list_windows(True)
+        others = [w for w in screen.list_windows(False) if w["exe"].lower() not in screen.GAME_EXES
+                  and w["exe"].lower() != "watt.exe"]
+        cur = screen.find_game_window()
+        row = lambda w: {"exe": w["exe"], "title": w["title"], "w": w["w"], "h": w["h"]}  # noqa: E731
+        return {"games": [row(w) for w in games], "others": [row(w) for w in others],
+                "picked": settings.load().get("game_exe", ""), "current": cur["exe"] if cur else None}
+
+    @_logged
+    def pick_window(self, exe: str) -> dict:
+        """고른 게임 창(실행 파일) 저장 — 빈 값이면 자동(WoW 창 중 가장 큰 것)."""
+        settings.save({"game_exe": exe or ""})
+        return self.list_windows()
 
     # ---- 채팅 영역 직접 지정 · 인식 오류 신고(#14)
     @_logged

@@ -37,8 +37,10 @@ def find(img: np.ndarray | None = None, window: dict | None = None) -> dict:
             raise NotFound("WoW 창을 찾지 못했습니다 — 게임을 창 모드(최대화)로 켜 주세요")
         # 게임 창 자체의 출력 — WATT · 다른 창이 채팅창을 가려도 찾는다. 안 되면 화면에서
         img = screen.capture_window(window)
-        if img is None:
+        if screen.black(img):
             img = screen.capture(window["x"], window["y"], window["w"], window["h"])
+        if screen.black(img):
+            raise NotFound(f"게임 화면이 까맣게 잡힙니다({window['exe']}) — 게임을 '창 모드(최대화)'로 바꾸거나, 다른 게임 창이면 위에서 고르세요")
     window = window or {"x": 0, "y": 0, "w": img.shape[1], "h": img.shape[0], "exe": "image"}
     H, W = img.shape[:2]
 
