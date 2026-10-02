@@ -200,7 +200,7 @@ def _channel(m: re.Match) -> str | None:
                              "귓말" if "귓속말" in kind or kind == "whispers" else None)
 
 
-LEAD_JUNK = re.compile(r"^\s*(?:[^\s\[〔(\d]{1,2}\s+(?=[\[〔(]\s*\d{1,2}\s*[\]〕)lIJj|1]?\s*[\[〔(])"  # 쇠 [11 [이름]:
+LEAD_JUNK = re.compile(r"^\s*(?:[^\s\[〔(]{1,2}\s+(?=[\[〔(]\s*\d{1,2}\s*[\]〕)lIJj|1]?\s*[\[〔(])"  # 쇠 [11 [이름]: · 71 [31 [이름]:
                        r"|[\[〔(]\s*[가-힣]\s*(?=\d{1,2}\s*[\]〕)lIJj|1]?\s*[\[〔(]))")  # [회 11 [이름]:
 BRACKET = re.compile(r"\[[^\[\]]{2,60}\]")
 HANGUL_LINK = re.compile(r"\[[^\[\]]*[가-힣][^\[\]]*\]")  # [늙은 불꽃눈] — 한국어 클라이언트가 보여 주는 링크
@@ -862,6 +862,7 @@ class Live:
         self.seen_body = Seen(30)  # 이름을 매번 다르게 읽어도(舜应盖特 · 舜廐 盖碍) 같은 글이면 한 번만
         self.ads = AdFilter()
         self.cache: dict[str, str] = {}
+        self.started = time.time()  # 이번 통역을 켠 때 — 런처가 '이번 실행' 시간을 보인다
         self.stats = {"frames": 0, "changed": 0, "ocr_ms": 0, "translated": 0, "tr_s": 0.0}
         self.first = True
         self.running = True
@@ -1233,10 +1234,12 @@ class Live:
         if now - self.last_status >= 2:  # 런처 대시보드가 읽는 상태 · 런처가 바꾼 설정/영역/명령
             self.last_status = now
             self.watch_launcher()
+            self.count_runtime(now)
             try:
                 paths.LIVE_STATUS.write_text(json.dumps({
                     "t": time.time(), "region": self.region, "frames": s["frames"], "changed": s["changed"],
                     "ocr_ms": s["ocr_ms"], "translated": s["translated"], "last_s": round(s["tr_s"], 2),
+                    "started": self.started,
                     "ai": sorted(self.ocr.ocr.ai.rec) if self.ocr.ocr.ai else [],
                     "ai_gpu": bool(self.ocr.ocr.ai and self.ocr.ocr.ai.gpu), "ai_error": self.ocr.ocr.ai_error or None,
                     "backlog": self.jobs.qsize(), "model": incoming.MODEL, "slow": self.slow()}, ensure_ascii=False),
@@ -1244,6 +1247,24 @@ class Live:
             except OSError:
                 pass
         self.root.after(300, self.poll)
+
+    def count_runtime(self, now: float) -> None:
+        """오늘 통역이 돈 시간을 runtime.json 에 더한다 — 홈의 '오늘 번역 · 표시까지'가 몇 시간 동안의 것인지 보이게.
+        잠자기 등으로 크게 비면(10초↑) 더하지 않는다. 날짜가 바뀌면 새로."""
+        last = getattr(self, "runtime_mark", None)
+        self.runtime_mark = now
+        if last is None or not 0 < now - last <= 10:
+            return
+        day = time.strftime("%Y-%m-%d")
+        try:
+            rt = json.loads(paths.RUNTIME.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            rt = {}
+        sec = (rt.get("sec", 0) if rt.get("day") == day else 0) + (now - last)
+        try:
+            paths.RUNTIME.write_text(json.dumps({"day": day, "sec": round(sec, 1)}), encoding="utf-8")
+        except OSError:
+            pass
 
     def run(self):
         try:

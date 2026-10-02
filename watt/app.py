@@ -159,6 +159,7 @@ class Api:
         st = self._live_status()
         return {"running": {"live": self._alive("live"), "input": self._alive("input")}, "live": st,
                 "feed": feed, "today": today, "avg_sec": round(sorted(secs)[len(secs) // 2], 1) if secs else None,
+                "runtime": self._runtime(),
                 "lighter": self._lighter_model(st["model"]) if st and st.get("slow") else None}
 
     @staticmethod
@@ -173,6 +174,15 @@ class Api:
         have = {m["name"] for m in system.ollama_status().get("models", [])}
         pick = next((m for m in lighter if m["name"] in have), lighter[0])
         return {"name": pick["name"], "label": pick["label"], "installed": pick["name"] in have}  # 중앙값 — 모델 올리는 첫 번역 몇 초에 끌려가지 않게
+
+    @staticmethod
+    def _runtime() -> float:
+        """오늘 통역이 돈 시간(초) — 통역 창이 2초마다 runtime.json 에 더한다."""
+        try:
+            rt = json.loads(paths.RUNTIME.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0
+        return rt.get("sec", 0) if rt.get("day") == time.strftime("%Y-%m-%d") else 0
 
     def _today_stats(self) -> tuple[int, list[float]]:
         """오늘 번역 건수와 최근 20건 번역 시간 — live.jsonl 이 바뀌었을 때만 다시 센다."""

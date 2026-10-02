@@ -40,6 +40,7 @@ REGION_GOOD = DATA / "chat_region_good.json"
 LIVE_UI = DATA / "live_ui.json"     # 통역 창 위치·크기(통역 창 프로세스가 씀)
 INPUT_UI = DATA / "input_ui.json"   # 입력창 위치(입력창 프로세스가 씀)
 LAUNCHER_UI = DATA / "launcher_ui.json"  # 런처 창 위치 · 크기(물리 픽셀)
+RUNTIME = DATA / "runtime.json"          # 오늘 통역이 돈 시간(초) — 다시 켜도 이어서 더한다
 LIVE_STATUS = DATA / "live_status.json"  # 통역 창이 2초마다 쓰는 상태 — 런처 대시보드용
 RESUME = DATA / "resume.json"            # 업데이트로 다시 켤 때 이어서 켤 것(통역 창이 돌고 있었나)
 LIVE_CMD = DATA / "live_cmd.json"        # 런처 → 통역 창 명령(다시 찾기·위치 초기화)

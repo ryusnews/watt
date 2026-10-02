@@ -158,6 +158,10 @@ function renderHome() {
   $('#m-count').textContent = lv.today || 0;
   $('#m-latency').innerHTML = lv.avg_sec != null ? `${lv.avg_sec.toFixed(1)}<small>s</small>` : '-';
   $('#m-read').innerHTML = lv.live && lv.live.ocr_ms ? `${lv.live.ocr_ms}<small>ms</small>` : '-';
+  // 동작 — 오늘 통역이 돈 시간(껐다 켜도 더함). 툴팁: 이번 실행 시작 · 지난 시간
+  $('#m-run').innerHTML = lv.runtime >= 60 ? dur(lv.runtime) : '-';
+  const started = on && lv.live && lv.live.started;
+  $('#m-run-box').dataset.tip = started ? `이번 실행 ${new Date(started * 1000).toTimeString().slice(0, 5)}부터 · ${dur(Date.now() / 1000 - started, true)}` : '오늘 통역이 돈 시간';
   // 상태
   const ocrOk = st.ocr.langs.filter((l) => l.installed).length;
   const ocrMiss = st.ocr.langs.filter((l) => !l.installed).map((l) => l.label);
@@ -683,6 +687,13 @@ document.addEventListener('mouseover', (e) => {
     tip.style.top = `${r.bottom + 8 + 30 > window.innerHeight ? r.top - 36 : r.bottom + 8}px`;
   }, 400);
 });
+// 초 → '1<small>h</small> 23<small>m</small>' (plain: '1시간 23분')
+function dur(s, plain = false) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (plain) return h ? `${h}시간 ${m}분` : `${m}분`;
+  if (h >= 10) return `${h}<small>h</small>`;  // 칸이 좁다
+  return h ? `${h}<small>h</small> ${m}<small>m</small>` : `${m}<small>m</small>`;
+}
 const HK_DEFAULT = 'Ctrl+Shift+K';
 function renderHotkey() {
   const hk = (S.state && S.state.settings && S.state.settings.hotkey_input) || HK_DEFAULT;
@@ -905,7 +916,7 @@ function mockApi() {
   const ok = (v) => Promise.resolve(v);
   return {
     get_state: () => ok(state()),
-    get_live: () => ok({ running, live: running.live ? { ocr_ms: 247 } : null, feed, today: 128, avg_sec: 1.3 }),
+    get_live: () => ok({ running, live: running.live ? { ocr_ms: 247, started: Date.now() / 1000 - 4980 } : null, feed, today: 128, avg_sec: 1.3, runtime: 8340 }),
     get_games: () => ok([{ dir: 'C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_', label: '클래식 베타', supported: true, running: true, addon: '0.2.0' },
       { dir: 'C:\\Program Files (x86)\\World of Warcraft\\_anniversary_', label: '기념 서버', supported: true, running: false, addon: null },
       { dir: 'C:\\Program Files (x86)\\World of Warcraft\\_retail_', label: '리테일', supported: false, running: false, addon: null }]),
