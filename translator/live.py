@@ -549,17 +549,6 @@ def load_ui() -> dict:
         return {}
 
 
-def on_screen(x: int, y: int, w: int, h: int) -> bool:
-    """창 위 막대(잡고 끄는 곳)가 어느 모니터에든 보이나 — 모니터를 빼거나 해상도가 바뀌면 옛 위치가 화면 밖이 된다."""
-    class RECT(ctypes.Structure):
-        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
-    bar = RECT(x + 20, y, x + max(21, w - 20), y + 24)
-    try:
-        return bool(ctypes.windll.user32.MonitorFromRect(ctypes.byref(bar), 0))  # 0: 겹치는 모니터 없으면 NULL
-    except (OSError, AttributeError):
-        return True
-
-
 def save_ui(ui: dict) -> None:
     paths.ensure()
     paths.LIVE_UI.write_text(json.dumps(ui, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -646,7 +635,7 @@ class Overlay:
         self.region = region
         saved = load_ui().get("overlay")
         g = re.fullmatch(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", saved or "")
-        if g and not on_screen(int(g[3]), int(g[4]), int(g[1]), int(g[2])):
+        if g and not screen.on_screen(int(g[3]), int(g[4]), int(g[1]), int(g[2])):
             saved = None  # 화면 밖(예: 684x279+-346+-636) — 채팅창 위로
         self.win.geometry(saved or self._default_geometry(size))
         bar = tk.Frame(body, bg=tks.BAR, height=24)
@@ -689,13 +678,13 @@ class Overlay:
         h = int(size * 4.2) * min(self.show, 6) + 40
         w = max(r["w"], 320)
         y = r["y"] - h - 8
-        if not on_screen(r["x"], y, w, h):  # 채팅창이 화면 위쪽이면 채팅창 아래로
+        if not screen.on_screen(r["x"], y, w, h):  # 채팅창이 화면 위쪽이면 채팅창 아래로
             y = r["y"] + r["h"] + 8
         return f"{w}x{h}+{r['x']}+{y}"
 
     def keep_on_screen(self) -> None:
         """모니터 구성이 바뀌어 창이 화면 밖으로 나가면 채팅창 위로 되돌린다."""
-        if not on_screen(self.win.winfo_x(), self.win.winfo_y(), self.win.winfo_width(), self.win.winfo_height()):
+        if not screen.on_screen(self.win.winfo_x(), self.win.winfo_y(), self.win.winfo_width(), self.win.winfo_height()):
             self.reset_position()
 
     def apply_font(self, size: int) -> None:

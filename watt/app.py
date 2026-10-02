@@ -726,6 +726,15 @@ class Api:
             self._live_cmd("reset_pos")
         return True
 
+    @_logged
+    def reset_input(self) -> bool:
+        """한국어 입력창 위치 되돌리기 — 다음에 열 때(Ctrl+Shift+K) 채팅창 위로."""
+        try:
+            paths.INPUT_UI.unlink()
+        except OSError:
+            pass
+        return True
+
     # ---- 창 · 폴더 · 링크
     @_logged
     def open_url(self, url: str) -> bool:

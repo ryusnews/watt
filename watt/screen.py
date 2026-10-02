@@ -292,3 +292,13 @@ def png_bytes(bgra: np.ndarray) -> bytes:
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
+
+def on_screen(x: int, y: int, w: int, h: int) -> bool:
+    """창 위 막대(잡고 끄는 곳)가 어느 모니터에든 보이나 — 모니터를 빼거나 해상도가 바뀌면 옛 위치가 화면 밖이 된다."""
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    bar = RECT(x + 20, y, x + max(21, w - 20), y + 24)
+    try:
+        return bool(ctypes.windll.user32.MonitorFromRect(ctypes.byref(bar), 0))  # 0: 겹치는 모니터 없으면 NULL
+    except (OSError, AttributeError):
+        return True

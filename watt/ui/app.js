@@ -763,6 +763,7 @@ function bind() {
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
   $('#set-resetpos').onclick = async () => { await call('reset_overlay'); toast('통역 창을 채팅창 위로 옮겼습니다', 'ok'); };
+  $('#set-resetinput').onclick = async () => { await call('reset_input'); toast('입력창은 다음에 열 때 채팅창 위에 뜹니다', 'ok'); };
   $('#set-openlogs').onclick = () => call('open_folder', 'logs');
   $('#set-clear').onclick = async () => {
     if (!(await confirmBox('기록 지우기', '화면 캡처 · 추적 기록 · 번역 기록 · 받은 파일. 설정은 남습니다'))) return;
@@ -865,7 +866,7 @@ function mockApi() {
     reset_term: (id) => { const t = mockTerms.find((x) => x.id === id); t.origin = 'base'; return ok({ ok: true }); },
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
-    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
+    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),

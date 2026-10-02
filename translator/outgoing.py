@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from ctypes import wintypes
 
-from watt import paths, settings
+from watt import paths, screen, settings
 from watt import tkstyle as tks
 
 from . import terms
@@ -284,7 +284,12 @@ class App:
     def show(self) -> None:
         self.cfg = {**self.cfg, **{k: v for k, v in load_config().items() if k != "pos"}}  # 런처에서 바꾼 언어·방식
         self.model = settings.load()["model"]
-        x, y = self.cfg.get("pos") or default_position()
+        self.cfg["pos"] = load_config().get("pos")  # 런처의 위치 되돌리기가 파일을 지우면 다음에 열 때 처음 위치로
+        x, y = self.cfg["pos"] or default_position()
+        if not screen.on_screen(x, y, 420, 90):  # 모니터 · 해상도가 바뀌어 화면 밖 — 처음 위치로
+            x, y = default_position()
+            if not screen.on_screen(x, y, 420, 90):
+                x, y = 60, 60
         self.win.geometry(f"+{x}+{y}")
         self.header()
         self.result.config(text="")
