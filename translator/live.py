@@ -171,7 +171,7 @@ PRE_CH = re.compile(r"(?:^|[\[〔(lI|])\s*(\d{1,2})\s*[.,\]〕)]")  # [1. 공개
 
 # 채팅 애드온의 시간 표시([23:10:02] · [23:10] · 23:10:02) — 머리를 읽기 전에 뗀다. 그대로 두면 '[23:' 을 이름으로,
 # '10' 의 1 을 닫는 괄호로 읽어 이름이 '23:', 본문이 '02] [2] [이름]: …' 가 됐다(Prat, 2026-10-01)
-TIMESTAMP = re.compile(r"^\s*[\[〔(]?\s*\d{1,2}\s*[:：.]\s*\d{2}(?:\s*[:：.]\s*\d{2})?\s*[\]〕)jlI|]?\s*")
+TIMESTAMP = re.compile(r"^\s*[\[〔(]?\s*[\dOoIl]{1,2}\s*[:：.]\s*[\dOoIl]{2}(?:\s*[:：.]\s*[\dOoIl]{2})?\s*[\]〕)jlI|]?\s*")  # 0 을 O 로 읽기도([0O:11:03])
 
 
 def parse_header(text: str, generic: bool = False) -> dict | None:
@@ -238,7 +238,8 @@ HEAD_CUT = re.compile(r"^.{0,72}?[\]〕)lJ1I|]\s*(?:님(?:의|에게)\s*\S{1,4}(
 def body_of(text: str) -> str:
     """언어 판정용 본문 — 머리([6. 파티찾기] [이름]:)를 뺀다. 기본 채팅은 머리에 한국어 채널 이름이 붙고 이름은 라틴이라,
     머리째 판정하면 한국어 본문이 영어로, 영어 본문이 한국어로 갈린다(2026-10-01 모니터링)."""
-    return HEAD_CUT.sub("", text or "", count=1)
+    # 시간 표시를 먼저 뗀다 — 안 떼면 '[00:11:00]' 의 '1:' 을 머리 끝으로 보고 본문이 '00] [2] [이름]: …' 이 됐다(2026-10-02)
+    return HEAD_CUT.sub("", TIMESTAMP.sub("", text or "", count=1), count=1)
 
 
 def compose(k: dict | None, chosen: dict, lang: str, line_h: int) -> str:
@@ -247,7 +248,13 @@ def compose(k: dict | None, chosen: dict, lang: str, line_h: int) -> str:
     if not k or not k.get("w") or not chosen.get("w"):
         return chosen["t"]
     acc = ""
+    ts = TIMESTAMP.match(k["t"] or "")
+    skip_to = len(re.sub(r"\s", "", ts.group(0))) if ts else 0  # 시간 표시 낱말은 머리 찾기에서 뺀다(띄어쓰기는 세지 않음)
+    seen = 0
     for i, (t, _, right) in enumerate(k["w"]):
+        seen += len(re.sub(r"\s", "", t))
+        if seen <= skip_to:
+            continue
         acc = f"{acc} {t}" if acc else t
         m = HEAD_CUT.match(acc + " ")
         if m and m.end() >= len(acc) and parse_header(acc + " x", True):
@@ -374,6 +381,10 @@ def _pure(name: str, rx: re.Pattern) -> tuple[int, float]:
 
 
 def best_name(row: dict, current: str) -> str:
+    return re.sub(r"^\s*\d{1,2}\s*[:：]\s*", "", _best_name(row, current))  # Prat 의 레벨 표시 '20:Miracle Bolt'
+
+
+def _best_name(row: dict, current: str) -> str:
     """이름은 그 문자를 제대로 읽는 엔진 것으로 — 한글은 한국어 엔진, 키릴은 러시아어 엔진, 한자는 중국어 엔진, 라틴은 영어 엔진.
     줄 엔진 하나로 읽으면 이름이 엔진마다 다르게 깨진다(Катя Мизулина → KaTß M 囝 3Y 月 囝 Ha, 2026-10-01)."""
     names = {}
@@ -461,8 +472,9 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
         body = h["body"] if h else None
         if not h and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 ]: 뒤)으로
             h = parse_header(r["alt_header"], True)
-            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", r["text"][:72]) or re.search(r"[:：]", r["text"][:72])
-            body = r["text"][colon.end():] if colon else h["body"]
+            txt = TIMESTAMP.sub("", r["text"], count=1)  # 시간 표시의 ':' 를 머리 끝으로 보지 않게
+            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", txt[:72]) or re.search(r"[:：]", txt[:72])
+            body = txt[colon.end():] if colon else h["body"]
         if h:
             ch = h["ch"]
             if not ch:  # 고른 엔진이 채널을 빠뜨렸으면 다른 엔진이 읽은 것으로(외침·귓말은 한국어 엔진이 잘 읽는다)
@@ -481,8 +493,9 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
             cur["rows"].append(r)
             last_y = r["y"]
         elif at_margin and i > 0:  # 머리 모양을 못 읽었어도 여백에서 시작하면 새 메시지(이름 모름). 맨 윗줄은 잘린 조각·탭 이름
-            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", r["text"][:72])
-            cur = {"ch": "?", "name": "", "body": (r["text"][colon.end():] if colon else r["text"]).strip(),
+            txt = TIMESTAMP.sub("", r["text"], count=1)
+            colon = re.search(r"[\]〕)lJ]\s*\S{0,6}\s*[:：]", txt[:72])
+            cur = {"ch": "?", "name": "", "body": (txt[colon.end():] if colon else txt).strip(),
                    "lang": r["lang"], "y": r["y"], "x": r["x"], "rows": [r]}
             msgs.append(cur)
             last_y = r["y"]
