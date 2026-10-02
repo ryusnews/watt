@@ -481,6 +481,16 @@ def refine(m: dict, img: np.ndarray, line_h: int, eng) -> dict:
     return out
 
 
+# 채팅 입력칸 — 영역 맨 아래에 입력칸이 들어오면 '이름님에게 귓: (내가 치는 답장)' 을 앞 메시지 뒷줄로 붙여 이름이 본문에
+# 섞이고 내 답장까지 번역했다(2026-10-03). 한국어 클라이언트의 입력칸 머리: 이름님에게 귓: · 말하기: · 외치기: · 길드: · 파티: …
+EDIT_PROMPT = re.compile(r"님에게\s*(?:귓\S{0,3})?\s*[:：]|^\s*(?:말하기|외치기|길드|파티|공격대|공격대\s*경보|관리자|일반|대화)\s*[:：]")
+
+
+def edit_box(r: dict) -> bool:
+    """이 줄이 채팅 입력칸인가 — 엔진 중 하나라도 입력칸 머리로 읽었으면."""
+    return any(EDIT_PROMPT.search(x or "") for x in [r.get("text")] + list((r.get("cand") or {}).values()))
+
+
 def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -> list[dict]:
     """머리([채널] [이름]:)로 시작하는 줄 + 이어지는 줄바꿈 줄 = 메시지. 머리 없는 맨 위 조각·시스템 메시지는 버린다.
     orphans 를 주면 버린 줄(머리도 아니고 이어지는 줄도 아닌 것)을 담는다 — 머리 인식 실패를 찾는 데 쓴다."""
@@ -494,6 +504,11 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     # 가운데 값 — 아이콘 부스러기로 x 가 튄 머리 줄 하나가 기준을 끌어가지 않게(가장 왼쪽 값이면 18 로 끌려가 시스템 줄이 붙었다)
     margin = heads[len(heads) // 2] if heads else min((r["x"] for r in rows), default=0)
     for i, r in enumerate(rows):
+        if edit_box(r):  # 채팅 입력칸 — 메시지가 아니다(내가 치는 글)
+            cur = None
+            if orphans is not None:
+                orphans.append(r)
+            continue
         at_margin = abs(r["x"] - margin) < line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
         h = parse_header(r["text"], at_margin)
         body = h["body"] if h else None
