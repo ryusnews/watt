@@ -32,7 +32,7 @@ AI 실행기(Ollama), 번역 모델, 글자 인식 언어 팩은 앱의 **환경
 ## 쓰는 법
 1. **환경 설정** 7단계를 차례로 끝냅니다.
 2. 게임을 켜고 홈의 **전원 버튼**을 누르면 게임 위에 통역 창이 뜹니다.
-3. 보낼 말은 **Ctrl+Shift+K**(게임 중에는 Ctrl+Enter) → 한국어 입력 → Enter → 게임 채팅창에 Ctrl+V.
+3. 보낼 말은 **Ctrl+Shift+K**(번역 설정 → 보내기 → 단축키에서 바꾸기, 게임 중에는 Ctrl+Enter) → 한국어 입력 → Enter → 게임 채팅창에 Ctrl+V.
 
 채팅창을 잘 읽게 하는 게임 설정은 [docs/setup-guide.md](docs/setup-guide.md)에 있습니다.
 

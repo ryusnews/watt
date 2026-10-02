@@ -102,7 +102,7 @@
       <div class="group rows" role="group" aria-label="조작">
         <div class="row" id="row-input">
           <svg class="ic"><use href="#i-kbd"/></svg>
-          <span class="grow">보내기 입력창<small class="mono">Ctrl+Shift+K</small></span>
+          <span class="grow">보내기 입력창<small class="mono" id="hk-small">Ctrl+Shift+K</small></span>
           <button class="switch" id="sw-input" role="switch" aria-checked="false" aria-label="보내기 입력창"></button>
         </div>
         <div class="row" id="row-orig">
@@ -177,7 +177,9 @@
             <button data-v="clipboard" data-tip="클립보드에 복사"><svg class="ic sm"><use href="#i-clip"/></svg>클립보드</button>
             <button data-v="paste" data-tip="열린 채팅 입력칸에 넣기 · Enter는 직접"><svg class="ic sm"><use href="#i-field"/></svg>입력칸</button>
           </div></div>
-        <div class="field"><span>단축키</span><span class="keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>K</kbd></span></div>
+        <div class="field"><span>단축키</span><span class="hk">
+          <button class="keys hk-btn" id="set-hotkey" aria-label="단축키 바꾸기" data-tip="눌러서 새 조합 누르기 · Esc 취소"></button>
+          <button class="icon-btn sq" id="set-hotkey-reset" aria-label="Ctrl+Shift+K 로" data-tip="Ctrl+Shift+K 로" hidden><svg class="ic sm"><use href="#i-reset"/></svg></button></span></div>
         <div class="field"><span>위치</span><button class="icon-btn sq" id="set-resetinput" aria-label="처음 위치로" data-tip="입력창을 채팅창 바로 위로 되돌리기"><svg class="ic sm"><use href="#i-reset"/></svg></button></div>
       </section>
       <section class="panel card">

@@ -122,6 +122,11 @@ body.welcome-mode .tabs, body.welcome-mode .engine, body.welcome-mode .help, bod
 .code.other { color: var(--en); }
 kbd { font: 500 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; background: var(--ctrl); box-shadow: inset 0 -1px 0 var(--line-2); color: var(--fg2); }
 .keys { display: inline-flex; gap: 3px; }
+.hk { display: inline-flex; align-items: center; gap: 6px; }
+.hk-btn { padding: 6px 8px; border-radius: 10px; background: transparent; border: 1px dashed transparent; cursor: pointer; }
+.hk-btn:hover { border-color: var(--line-2); }
+.hk-btn.rec { border-color: var(--teal, currentColor); animation: pulse 1.2s ease infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
 .progress { height: 8px; border-radius: 8px; background: var(--ctrl); overflow: hidden; }
 .progress > i { display: block; height: 100%; width: 0; background: var(--teal); border-radius: 8px; transition: width .3s; }
 .progress.indet > i { width: 30%; animation: indet 1.2s ease-in-out infinite; }

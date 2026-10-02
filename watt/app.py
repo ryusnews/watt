@@ -727,6 +727,18 @@ class Api:
         return True
 
     @_logged
+    def set_hotkey(self, combo: str) -> dict:
+        """보내기 입력창 단축키 — 쓸 수 있는지(다른 프로그램이 쓰는지) 보고 저장. 켜 둔 입력창은 1초 안에 바꾼다."""
+        from . import hotkey
+        combo = combo or hotkey.DEFAULT
+        if combo != settings.load().get("hotkey_input"):
+            why = hotkey.check(combo)
+            if why:
+                return {"ok": False, "why": why}
+        settings.save({"hotkey_input": combo})
+        return {"ok": True, "combo": combo}
+
+    @_logged
     def reset_input(self) -> bool:
         """한국어 입력창 위치 되돌리기 — 다음에 열 때(Ctrl+Shift+K) 채팅창 위로."""
         try:

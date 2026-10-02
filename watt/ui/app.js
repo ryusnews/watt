@@ -439,6 +439,7 @@ async function act(name, d = {}) {
 /* ---------- 번역 설정 ---------- */
 function renderSettings() {
   const c = S.state && S.state.settings; if (!c) return;
+  renderHotkey();
   const games = (S.games || []).filter((g) => g.supported);
   const cur = c.game_dir || defaultGame(S.games || []) || '';
   setHTML($('#set-game'), games.length ? games.map((g) => `<option value="${esc(g.dir)}" ${g.dir === cur ? 'selected' : ''}>${esc(g.label)}</option>`).join('')
@@ -564,7 +565,7 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#t
 /* ---------- 온보딩 ---------- */
 const COACH = [
   { sel: '#power', circle: true, title: '통역 켜기 · 끄기', text: '게임 채팅을 한국어로 띄웁니다' },
-  { sel: '#row-input', title: '보내기 입력창', text: '한국어로 쓰면 영어로 바꿔 줍니다. Ctrl+Shift+K' },
+  { sel: '#row-input', title: '보내기 입력창', text: '한국어로 쓰면 영어로 바꿔 줍니다. Ctrl+Shift+K (번역 설정에서 바꾸기)' },
   { sel: '#row-orig', title: '원문 보기', text: '번역 아래에 원래 글을 함께 보여 줍니다' },
   { sel: '#row-region', title: '채팅 영역', text: '채팅창을 옮겼다면 다시 찾습니다' },
 ];
@@ -682,6 +683,55 @@ document.addEventListener('mouseover', (e) => {
     tip.style.top = `${r.bottom + 8 + 30 > window.innerHeight ? r.top - 36 : r.bottom + 8}px`;
   }, 400);
 });
+const HK_DEFAULT = 'Ctrl+Shift+K';
+function renderHotkey() {
+  const hk = (S.state && S.state.settings && S.state.settings.hotkey_input) || HK_DEFAULT;
+  const b = $('#set-hotkey');
+  if (!b.classList.contains('rec')) setHTML(b, hk.split('+').map((k) => `<kbd>${esc(k)}</kbd>`).join(''));
+  $('#set-hotkey-reset').hidden = hk === HK_DEFAULT;
+  $('#hk-small').textContent = hk;
+}
+function comboOf(e) {
+  const c = e.code || '';
+  let key = null;
+  if (/^Key[A-Z]$/.test(c)) key = c.slice(3);
+  else if (/^Digit\d$/.test(c)) key = c.slice(5);
+  else if (/^F([1-9]|1\d|2[0-4])$/.test(c)) key = c;
+  else key = { Space: 'Space', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+    Pause: 'Pause', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';',
+    Quote: "'", Comma: ',', Period: '.', Slash: '/' }[c] || null;
+  if (!key) return null;
+  return [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win', key].filter(Boolean).join('+');
+}
+function recordHotkey() {
+  const b = $('#set-hotkey');
+  if (b.classList.contains('rec')) return;
+  b.classList.add('rec'); setHTML(b, '<kbd>…</kbd>');
+  const done = () => { document.removeEventListener('keydown', onKey, true); b.classList.remove('rec'); renderHotkey(); };
+  const onKey = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') return done();
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {  // 누르는 중 — 조합키만 보여 주기
+      setHTML(b, [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean).map((k) => `<kbd>${k}</kbd>`).join('') + '<kbd>…</kbd>');
+      return;
+    }
+    const combo = comboOf(e);
+    done();
+    if (combo) applyHotkey(combo);
+  };
+  document.addEventListener('keydown', onKey, true);
+  b.addEventListener('blur', done, { once: true });
+}
+async function applyHotkey(combo) {
+  const r = await call('set_hotkey', combo);
+  if (!r) return;
+  if (!r.ok) {
+    const why = { invalid: 'Ctrl · Alt · Win 과 함께 누르세요(F1–F12 는 혼자 가능)', taken: '다른 프로그램이 쓰는 조합입니다', reserved: '게임 · 시스템이 쓰는 조합입니다' }[r.why];
+    return toast(`${combo} — ${why || '쓸 수 없습니다'}`, 'warn');
+  }
+  S.state.settings.hotkey_input = r.combo; renderHotkey();
+  toast(`보내기 입력창: ${r.combo}`, 'ok');
+}
 function toast(text, kind = 'info') {
   const t = document.createElement('div'); t.className = 'toast';
   t.innerHTML = `<i class="dot ${kind}"></i><span>${esc(text)}</span>`;
@@ -763,6 +813,9 @@ function bind() {
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
   $('#set-resetpos').onclick = async () => { await call('reset_overlay'); toast('통역 창을 채팅창 위로 옮겼습니다', 'ok'); };
+  // 보내기 입력창 단축키 — 눌러서 새 조합을 누른다(Esc 취소). 런처가 다른 프로그램과 겹치는지 보고 저장
+  $('#set-hotkey').onclick = () => recordHotkey();
+  $('#set-hotkey-reset').onclick = () => applyHotkey('Ctrl+Shift+K');
   $('#set-resetinput').onclick = async () => { await call('reset_input'); toast('입력창은 다음에 열 때 채팅창 위에 뜹니다', 'ok'); };
   $('#set-openlogs').onclick = () => call('open_folder', 'logs');
   $('#set-clear').onclick = async () => {
@@ -866,7 +919,7 @@ function mockApi() {
     reset_term: (id) => { const t = mockTerms.find((x) => x.id === id); t.origin = 'base'; return ok({ ok: true }); },
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
-    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
+    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), set_hotkey: (c) => ok({ ok: true, combo: c }), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),

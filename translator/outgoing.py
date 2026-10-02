@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from ctypes import wintypes
 
-from watt import paths, screen, settings
+from watt import hotkey, paths, screen, settings
 from watt import tkstyle as tks
 
 from . import terms
@@ -115,7 +115,7 @@ kernel32 = ctypes.windll.kernel32
 MOD_CONTROL, MOD_SHIFT, MOD_NOREPEAT, WM_HOTKEY = 0x0002, 0x0004, 0x4000, 0x0312
 VK_K, VK_RETURN, VK_CONTROL, VK_V = 0x4B, 0x0D, 0x11, 0x56
 GAME_EXES = {"wow.exe", "wowb.exe", "wowclassic.exe"}
-HK_ANY, HK_GAME = 1, 2  # Ctrl+Shift+K(항상) · Ctrl+Enter(WoW 가 앞에 있을 때만)
+HK_ANY, HK_GAME = 1, 2  # 고른 단축키(항상, 기본 Ctrl+Shift+K) · Ctrl+Enter(WoW 가 앞에 있을 때만)
 
 
 def foreground_exe() -> tuple[int, str]:
@@ -134,12 +134,22 @@ def foreground_exe() -> tuple[int, str]:
 
 
 def hotkey_thread(events: queue.Queue) -> None:
-    """Ctrl+Enter 는 WoW 가 앞에 있을 때만 등록 — 다른 프로그램의 Ctrl+Enter 를 빼앗지 않는다."""
-    if not user32.RegisterHotKey(None, HK_ANY, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_K):
-        events.put(("error", "Ctrl+Shift+K 등록 실패"))
+    """Ctrl+Enter 는 WoW 가 앞에 있을 때만 등록 — 다른 프로그램의 Ctrl+Enter 를 빼앗지 않는다.
+    고른 단축키는 런처에서 바꾸면 1초 안에 다시 등록한다."""
     game_hk = False
+    combo, checked = None, 0.0
     msg = wintypes.MSG()
     while True:
+        if time.monotonic() - checked > 1:
+            checked = time.monotonic()
+            want_combo = settings.load().get("hotkey_input") or hotkey.DEFAULT
+            if want_combo != combo:
+                if combo:
+                    user32.UnregisterHotKey(None, HK_ANY)
+                p = hotkey.parse(want_combo) or hotkey.parse(hotkey.DEFAULT)
+                if not user32.RegisterHotKey(None, HK_ANY, p[0] | MOD_NOREPEAT, p[1]):
+                    events.put(("error", f"{want_combo} 등록 실패"))
+                combo = want_combo
         _, exe = foreground_exe()
         want = exe in GAME_EXES
         if want and not game_hk:
