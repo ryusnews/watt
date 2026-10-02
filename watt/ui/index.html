@@ -194,6 +194,11 @@
         <h2><svg class="ic bronze"><use href="#i-chip"/></svg>AI 엔진</h2>
         <div class="field"><span>모델</span><label class="select mono"><select id="set-model"></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field" data-tip="첫 번역이 기다리지 않게 모델을 미리 올려 둡니다"><span>미리 올리기</span><button class="switch" id="set-preload" role="switch" aria-label="미리 올리기"></button></div>
+        <div class="field"><span>AI 실행기</span><label class="select"><select id="set-runner" aria-label="AI 실행기">
+          <option value="system">PC 의 Ollama</option><option value="watt">WATT 전용</option></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
+        <div class="field" id="models-dir-field"><span>모델 위치</span><span class="inline path-field"><span class="mono path" id="set-models-dir">…</span>
+          <button class="icon-btn sq" id="set-models-reset" aria-label="기본 폴더로" data-tip="기본 폴더로" hidden><svg class="ic sm"><use href="#i-reset"/></svg></button>
+          <button class="icon-btn sq" id="set-models-pick" aria-label="모델 폴더 고르기" data-tip="모델 폴더 고르기 — 받은 모델도 함께 옮깁니다"><svg class="ic sm"><use href="#i-folder"/></svg></button></span></div>
       </section>
     </div>
     <div class="col">

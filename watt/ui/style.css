@@ -261,6 +261,12 @@ button.chip { border: 0; cursor: pointer; } button.chip:hover { background: var(
 .game .p { display: block; font: 500 11.5px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .game.off { opacity: .45; pointer-events: none; }
 .preview { width: 516px; max-width: 100%; min-height: 120px; background: #000; box-shadow: 0 0 0 1.5px var(--teal); display: grid; place-items: center; color: var(--dim); }
+.mode-seg { display: inline-flex; width: auto; margin-bottom: 12px; }
+.mode-seg button { gap: 6px; }
+.vram-facts { margin: 10px 0 2px; gap: 8px; align-items: center; }
+.vram-facts b { color: var(--fg); }
+.path-field { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 70%; }
+.path-field .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: 12px; color: var(--fg2); min-width: 0; }
 .win-pick { width: 516px; max-width: 100%; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--muted); }
 .win-pick .select { flex: 1; min-width: 0; }
 .win-pick .select select { width: 100%; min-width: 0; text-overflow: ellipsis; }

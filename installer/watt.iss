@@ -64,13 +64,15 @@ Filename: "{app}\WATT.exe"; Description: "{cm:LaunchProgram,WATT}"; Flags: nowai
 Filename: "{app}\WATT.exe"; Flags: nowait; Check: IsRelaunch
 
 [CustomMessages]
-korean.AskModels=WATT 로 받은 AI 번역 모델도 지울까요?%n(수 GB · Ollama 프로그램은 남습니다)
+korean.AskModels=예전 버전의 WATT 가 PC 의 Ollama 로 받은 번역 모델도 지울까요?%n(수 GB · Ollama 프로그램은 남습니다)
+korean.AskRunner=WATT 전용 AI 실행기와 번역 모델(수 GB)도 지울까요?%n(PC 에 따로 설치한 Ollama 는 그대로)
 korean.AskAddons=게임 폴더의 글꼴 애드온(ChatFontCJK)도 지울까요?
 korean.AskOcr=WATT 가 설치한 글자 인식 언어 팩도 지울까요?%n(원래 있던 언어 팩은 그대로 · Windows 권한 확인 창이 뜹니다)
 korean.AskOllama=WATT 가 설치한 Ollama(AI 실행기)도 제거할까요?%n(Ollama 제거 프로그램이 열립니다)
 korean.AskAi=WATT 로 받은 AI 글자 인식 파일(모델 · 실행 엔진)도 지울까요?
 korean.AskData=WATT 설정과 기록(채팅 기록 포함)도 지울까요?
-english.AskModels=Also remove the AI translation models WATT downloaded?%n(several GB; Ollama itself stays)
+english.AskModels=Also remove the translation models an older WATT downloaded into your Ollama?%n(several GB; Ollama itself stays)
+english.AskRunner=Also remove WATT's own AI runner and translation models (several GB)?%n(a separately installed Ollama stays)
 english.AskAddons=Also remove the ChatFontCJK font addon from your game folder?
 english.AskOcr=Also remove the text recognition language packs WATT installed?%n(packs you had before stay; Windows will ask for permission)
 english.AskOllama=Also uninstall Ollama, which WATT installed?%n(the Ollama uninstaller will open)
@@ -99,6 +101,45 @@ begin
   Result := ExpandConstant('{localappdata}\Programs\Ollama\ollama.exe');
   if not FileExists(Result) then
     Result := ExpandConstant('{commonpf}\Ollama\ollama.exe');
+end;
+
+{ 설정의 models_dir("D:\\AI" → D:\AI) — 고른 모델 폴더. 없으면 '' }
+function CustomModelsDir: String;
+var
+  S: AnsiString;
+  P: Integer;
+begin
+  Result := '';
+  if not LoadStringFromFile(DataDir + '\settings.json', S) then Exit;
+  P := Pos('"models_dir": "', S);
+  if P = 0 then Exit;
+  S := Copy(S, P + Length('"models_dir": "'), 1024);
+  P := Pos('"', S);
+  if P <= 1 then Exit;
+  Result := Copy(S, 1, P - 1);
+  StringChangeEx(Result, '\\', '\', True);
+end;
+
+{ WATT 전용 실행기(데이터 폴더 ollama) 프로세스만 끈다 — PC 의 다른 Ollama 는 그대로 }
+procedure StopRunner;
+var
+  Code: Integer;
+begin
+  Exec('powershell.exe', '-NoProfile -WindowStyle Hidden -Command "Get-Process ollama -ErrorAction SilentlyContinue | ' +
+    'Where-Object { $_.Path -like ''' + DataDir + '\ollama\*'' } | Stop-Process -Force"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+procedure RemoveRunner;
+var
+  D: String;
+begin
+  StopRunner;
+  DelTree(DataDir + '\ollama', True, True, True);
+  DelTree(DataDir + '\ollama.new', True, True, True);
+  DelTree(DataDir + '\models', True, True, True);
+  D := CustomModelsDir;
+  if (D <> '') and FileExists(D + '\WATT-models\.watt') then
+    DelTree(D + '\WATT-models', True, True, True);
 end;
 
 procedure RemoveModels(const Lines: TArrayOfString);
@@ -165,6 +206,9 @@ var
   Lines: TArrayOfString;
 begin
   if CurUninstallStep <> usUninstall then Exit;
+  if DirExists(DataDir + '\ollama') or DirExists(DataDir + '\models') or (CustomModelsDir <> '') then
+    if SuppressibleMsgBox(CustomMessage('AskRunner'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
+      RemoveRunner;
   if ReadList('installed_models.txt', Lines) then
     if SuppressibleMsgBox(CustomMessage('AskModels'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       RemoveModels(Lines);
@@ -177,9 +221,9 @@ begin
   if ReadList('installed_addons.txt', Lines) then
     if SuppressibleMsgBox(CustomMessage('AskAddons'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       RemoveAddons(Lines);
-  if DirExists(DataDir + 'i') then
+  if DirExists(DataDir + '\ai') then
     if SuppressibleMsgBox(CustomMessage('AskAi'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
-      DelTree(DataDir + 'i', True, True, True);
+      DelTree(DataDir + '\ai', True, True, True);
   if DirExists(DataDir) then
     if SuppressibleMsgBox(CustomMessage('AskData'), mbConfirmation, MB_YESNO, IDNO) = IDYES then
       DelTree(DataDir, True, True, True);

@@ -3,7 +3,15 @@ import time
 import urllib.error
 import urllib.request
 
-URL = "http://127.0.0.1:11434"
+from watt import runner
+
+class _Url(str):
+    """llm.URL — 쓸 때마다 지금 방식의 주소(PC 의 Ollama 11434 · WATT 전용 11535)."""
+    def __add__(self, other):
+        return runner.url() + other
+
+
+URL = _Url()
 
 
 def think_for(model: str):

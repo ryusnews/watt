@@ -21,8 +21,14 @@ from pathlib import Path
 from . import ocr, paths, screen
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-OLLAMA_URL = "http://127.0.0.1:11434"
-OLLAMA_SETUP_URL = "https://ollama.com/download/OllamaSetup.exe"
+from . import runner
+class _Url(str):
+    """쓸 때마다 지금 방식의 주소 — runner.url()(PC 의 Ollama 11434 · WATT 전용 11535)."""
+    def __add__(self, other):
+        return runner.url() + other
+
+
+OLLAMA_URL = _Url()
 
 # 번역 모델 — VRAM 에 맞춰 추천. verified: 평가 세트(보내기 23·받기 22·사전 15)로 검증했는가
 MODELS = [
@@ -95,10 +101,69 @@ def system_info() -> dict:
 
 
 def recommend_model(vram_gb: float) -> str:
+    """전체 VRAM 으로(남은 양을 못 잴 때)."""
     for m in MODELS:
         if vram_gb >= m["min_vram"]:
             return m["name"]
     return MODELS[-1]["name"]
+
+
+WOW_VRAM_GB = 4.0   # 와우 클래식이 쓰는 VRAM 예상(이 PC 1920×1009: 와우를 켜고 다른 것 없이 전체 5.9GB 중 4–5GB, 2026-10-02)
+MARGIN_GB = 0.8     # 여유 — 창 · 브라우저 · 드라이버가 조금씩 더 쓴다
+_vram_cache: list = [0.0, None]
+
+
+def vram_used_gb() -> float | None:
+    """지금 쓰고 있는 VRAM(GB) — NVIDIA 는 nvidia-smi(빠름), 아니면 Windows 성능 카운터(제조사 상관없이, ~2초). 30초 캐시."""
+    if time.monotonic() - _vram_cache[0] < 30:
+        return _vram_cache[1]
+    used = None
+    smi = shutil.which("nvidia-smi")
+    if smi:
+        try:
+            out = subprocess.run([smi, "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True,
+                                 text=True, timeout=5, creationflags=NO_WINDOW)
+            vals = [float(x) for x in out.stdout.split() if x.replace(".", "").isdigit()]
+            used = max(vals) / 1024 if vals else None
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
+    if used is None:
+        try:
+            out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                  "(Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage').CounterSamples | "
+                                  "ForEach-Object { $_.CookedValue }"], capture_output=True, text=True, timeout=15,
+                                 creationflags=NO_WINDOW)
+            vals = [float(x) for x in out.stdout.split() if x.replace(".", "").replace(",", "").isdigit()]
+            used = max(vals) / 1024 ** 3 if vals else None
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
+    _vram_cache[:] = [time.monotonic(), used]
+    return used
+
+
+def vram_plan(ai_gpu: bool = False) -> dict:
+    """번역 모델에 쓸 수 있는 VRAM — 지금 남은 양에서, 와우가 꺼져 있으면 와우 몫(예상)을 빼고, WATT 모델이 이미 올라가 있으면
+    그만큼은 돌려받는다(바꾸면 내리니까). 전체 VRAM 만 보면 와우를 켰을 때 모자라 공유 메모리로 넘어가 느려졌다
+    (16GB 에 12b + 와우 + AI 글자 인식 GPU → 공유 메모리 8GB, 2026-10-02)."""
+    gl = gpus()
+    best = max(gl, key=lambda g: g.get("vram_gb", 0)) if gl else None
+    total = best["vram_gb"] if best else 0
+    used = vram_used_gb()
+    from . import screen
+    wow = bool(screen.list_windows(True))
+    watt_loaded = 0.0
+    try:
+        mine = {m["name"]: m["vram_gb"] for m in MODELS}
+        watt_loaded = sum(mine.get(m["name"], 0) for m in runner.status().get("loaded", []))
+    except Exception:
+        pass
+    if used is None:
+        return {"total": total, "used": None, "wow": wow, "wow_est": 0, "available": None,
+                "pick": recommend_model(total)}
+    avail = total - used + watt_loaded - (0 if wow else WOW_VRAM_GB) - (1.5 if ai_gpu else 0) - MARGIN_GB
+    pick = next((m["name"] for m in MODELS if m["vram_gb"] <= avail), MODELS[-1]["name"])
+    return {"total": round(total, 1), "used": round(used, 1), "wow": wow, "wow_est": 0 if wow else WOW_VRAM_GB,
+            "watt_loaded": round(watt_loaded, 1), "available": round(avail, 1), "pick": pick}
 
 
 # ---- 관리자 권한으로 실행(UAC) 후 끝날 때까지 기다리기
@@ -184,6 +249,12 @@ def _get(path: str, timeout: float = 2.0):
 
 
 def ollama_status() -> dict:
+    """WATT 전용 실행기 상태(installed · running · models · loaded · models_dir · download)."""
+    return runner.status()
+
+
+def legacy_ollama_status() -> dict:
+    """옛 방식(PC 에 설치한 Ollama) — WATT 가 설치했던 것을 정리할 때만."""
     exe = ollama_exe()
     try:
         ver = _get("/api/version").get("version")
@@ -202,35 +273,34 @@ def ollama_status() -> dict:
 
 
 def ollama_start() -> dict:
-    """설치돼 있으면 켠다(트레이 앱이 있으면 그것, 없으면 serve)."""
-    exe = ollama_exe()
-    if not exe:
-        return ollama_status()
-    app = Path(exe).with_name("ollama app.exe")
-    if app.exists():
-        subprocess.Popen([str(app)], creationflags=NO_WINDOW, close_fds=True)
-    else:
-        subprocess.Popen([exe, "serve"], creationflags=NO_WINDOW | 0x00000008, close_fds=True)  # DETACHED_PROCESS
-    for _ in range(40):
-        time.sleep(0.5)
-        st = ollama_status()
-        if st["running"]:
-            return st
-    return ollama_status()
+    """WATT 전용 실행기를 켠다."""
+    runner.start()
+    return runner.status()
 
 
 def ollama_uninstall() -> dict:
+    """WATT 전용 실행기와 모델을 지운다(폴더 둘). 옛 방식으로 WATT 가 설치한 Ollama 가 있으면 그 제거 프로그램도."""
+    runner.remove(models=True)
+    forget_all = read_list(paths.INSTALLED_MODELS)
+    for m in forget_all:
+        forget(paths.INSTALLED_MODELS, m)
+    if read_list(paths.INSTALLED_OLLAMA) and ollama_exe():
+        legacy_ollama_uninstall()
+    return runner.status()
+
+
+def legacy_ollama_uninstall() -> dict:
     """Ollama 자체 제거 프로그램을 연다(받은 모델 폴더는 Ollama 가 남긴다)."""
     exe = ollama_exe()
     if not exe:
-        return ollama_status()
+        return legacy_ollama_status()
     unins = next(iter(sorted(Path(exe).parent.glob("unins*.exe"))), None)
     if not unins:
         raise RuntimeError("Ollama 제거 프로그램을 찾지 못했습니다. 설정 → 앱에서 지워 주세요")
     subprocess.run([str(unins)], check=False)
     if not ollama_exe():
         write_list(paths.INSTALLED_OLLAMA, [])
-    return ollama_status()
+    return legacy_ollama_status()
 
 
 def download(url: str, dest: Path, progress=None, cancel: threading.Event | None = None) -> Path:
@@ -254,20 +324,20 @@ def download(url: str, dest: Path, progress=None, cancel: threading.Event | None
     return dest
 
 
+def amd_gpu() -> bool:
+    """번역에 쓸 그래픽 카드(VRAM 이 가장 큰 것)가 AMD 인가 — Ryzen 내장 그래픽(Radeon)이 함께 잡혀도 RTX 가 있으면 아니다."""
+    gl = gpus()
+    if not gl:
+        return False
+    best = max(gl, key=lambda g: g.get("vram_gb", 0))
+    return "amd" in best["name"].lower() or "radeon" in best["name"].lower()
+
+
 def ollama_install(progress=None, cancel=None) -> dict:
-    """공식 설치 파일(ollama.com)을 받아 실행 — 설치 창은 Ollama 것이 뜬다."""
-    had = bool(ollama_exe())
-    setup = download(OLLAMA_SETUP_URL, paths.DOWNLOADS / "OllamaSetup.exe", progress, cancel)
-    subprocess.run([str(setup)], check=False)  # 사용자 영역 설치(관리자 권한 불필요). 끝나면 Ollama 가 스스로 켜진다
-    setup.unlink(missing_ok=True)  # 다 쓴 설치 파일
-    if not had and ollama_exe():
-        remember(paths.INSTALLED_OLLAMA, str(Path(ollama_exe()).parent))
-    for _ in range(40):
-        st = ollama_status()
-        if st["running"]:
-            return st
-        time.sleep(0.5)
-    return ollama_start()
+    """WATT 전용 실행기(공식 포터블 zip)를 받아 풀고 켠다 — 설치 창 · 관리자 권한 없이. AMD 그래픽 카드면 ROCm 묶음도."""
+    runner.install(amd_gpu(), progress, cancel)
+    runner.set_mode("watt")
+    return runner.status()
 
 
 def model_pull(name: str, progress=None, cancel: threading.Event | None = None) -> dict:
@@ -293,7 +363,7 @@ def installed_by_watt() -> dict:
     return {"models": read_list(paths.INSTALLED_MODELS), "ocr": read_list(paths.INSTALLED_OCR),
             "addons": [d for d in read_list(paths.INSTALLED_ADDONS)
                        if (Path(d) / "Interface" / "AddOns" / "ChatFontCJK").exists()],
-            "ollama": bool(read_list(paths.INSTALLED_OLLAMA)) and bool(ollama_exe())}
+            "ollama": runner.EXE.exists() or (bool(read_list(paths.INSTALLED_OLLAMA)) and bool(ollama_exe()))}
 
 
 def model_delete(name: str) -> dict:

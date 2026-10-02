@@ -115,7 +115,7 @@ def notices() -> None:
               "- Sarasa Gothic (SIL OFL 1.1, ChatFontCJK 애드온) · Sarasa-Gothic-OFL.txt",
               "- PyInstaller 부트로더 (GPL 2.0 + 배포 예외)", "",
               "WATT 가 설치를 도와주지만 함께 배포하지 않는 것:",
-              "- Ollama (MIT) — ollama.com 공식 설치 파일", "- Gemma 4 모델 (Gemma Terms of Use, https://ai.google.dev/gemma/terms) — Ollama 로 받음",
+              "- Ollama (MIT) — github.com/ollama/ollama 공식 포터블(WATT 전용 실행기) 또는 PC 에 설치된 것", "- Gemma 4 모델 (Gemma Terms of Use, https://ai.google.dev/gemma/terms) — Ollama 로 받음",
               "- Windows OCR 언어 팩 — Windows 기능", "",
               "World of Warcraft는 Blizzard Entertainment의 상표입니다. WATT는 Blizzard와 관련 없는 비공식 도구입니다."]
     (APP / "THIRD_PARTY_NOTICES.txt").write_text("\n".join(lines), encoding="utf-8")

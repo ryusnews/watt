@@ -14,11 +14,12 @@ import subprocess
 import sys
 import threading
 import time
+import shutil
 from collections import deque
 
 import webview
 
-from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, report, screen, settings, system, update
+from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, report, runner, screen, settings, system, update
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 log = logging.getLogger("watt")
@@ -110,6 +111,7 @@ class Api:
         if game:
             game["flavor"] = system.FLAVORS.get(os.path.basename(os.path.dirname(game["path"])), game["exe"])
         vram = (self._sys.get("gpu") or {}).get("vram_gb", 0)
+        plan = system.vram_plan(bool(cfg.get("ai_gpu")))  # 지금 남은 VRAM · 와우 몫으로 추천
         model_ok = any(m["name"] == cfg["model"] for m in ol["models"])
         mine = system.installed_by_watt()
         ol["watt"] = mine["ollama"]
@@ -130,8 +132,9 @@ class Api:
                     "portable": paths.PORTABLE},
             "settings": cfg, "system": self._sys, "ocr": oc, "ollama": ol,
             "removable_ocr": mine["ocr"], "watt_installed": mine,
-            "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]), "watt": m["name"] in mine["models"],
-                        "recommended": m["name"] == system.recommend_model(vram)} for m in system.MODELS],
+            "models": [{**m, "installed": any(x["name"] == m["name"] for x in ol["models"]), "watt": True,  # 전용 실행기 — 모두 WATT 것
+                        "recommended": m["name"] == plan["pick"]} for m in system.MODELS],
+            "vram": plan,
             "game": game and {"exe": game["exe"], "flavor": game["flavor"], "w": game["w"], "h": game["h"]},
             "region": region, "steps": steps,
             "running": {"live": self._alive("live"), "input": self._alive("input")},
@@ -298,6 +301,11 @@ class Api:
         self._switching = threading.Thread(target=work, daemon=True)
         self._switching.start()
 
+    def start_runner(self) -> None:
+        if runner.EXE.exists():
+            runner.start()
+            self.tidy_models()
+
     def tidy_models(self) -> None:
         """WATT 모델(system.MODELS) 중 지금 설정이 아닌 것이 올라가 있으면 내린다 — 모델을 바꾸고 곧바로 업데이트로 다시
         켜면 내리기가 끝나기 전에 런처가 꺼져 E4B 와 12b 가 같이 남았다(2026-10-02). 다른 프로그램의 모델은 건드리지 않는다."""
@@ -393,8 +401,12 @@ class Api:
     @_logged
     def install_ollama(self) -> dict:
         def work(cancel):
-            def prog(done, total):
-                self._emit(type="progress", task="ollama", done=done, total=total, status="설치 파일 받는 중")
+            last = [0.0]
+
+            def prog(done, total):  # 1MB 마다 불린다 — 화면에는 0.25초에 한 번
+                if time.monotonic() - last[0] >= 0.25 or done >= total:
+                    last[0] = time.monotonic()
+                    self._emit(type="progress", task="ollama", done=done, total=total, status="AI 실행기 받는 중")
             return system.ollama_install(prog, cancel)
         return self._task("ollama", work)
 
@@ -415,9 +427,10 @@ class Api:
                 last[:] = [now, done, now]
                 self._emit(type="progress", task="pull", model=name, status=status, done=done, total=total,
                            speed=speed)
+            runner.start()
             had = any(m["name"] == name for m in system.ollama_status()["models"])
-            st = system.model_pull(name, prog, cancel)
-            if not had:  # 원래 있던 모델은 삭제할 때 건드리지 않는다
+            st = system.model_pull(name, prog, cancel)  # 전용이면 그 모델 폴더에(지울 때 폴더째)
+            if runner.mode() == "system" and not had:  # PC 의 Ollama 에 받은 것 — 원래 있던 모델은 지울 때 건드리지 않는다
                 system.remember(paths.INSTALLED_MODELS, name)
             self.save_settings({"model": name})
             return st
@@ -564,6 +577,84 @@ class Api:
     @_logged
     def use_model(self, name: str) -> dict:
         return self.save_settings({"model": name})
+
+    @_logged
+    def set_runner_mode(self, mode: str) -> dict:
+        """AI 실행기 방식 — system(PC 의 Ollama) · watt(WATT 전용, 없으면 받기부터)."""
+        def work(cancel):
+            self.stop_all()  # 통역 창 · 입력창이 실행기를 쓰고 있다
+            runner.set_mode(mode)
+            return system.ollama_status()
+        return self._task("ollama", work)
+
+    @_logged
+    def models_info(self) -> dict:
+        """모델 폴더 · 쓰는 용량 · 빈 공간 · PC 의 Ollama 에 이미 있는 WATT 모델(다시 받지 않고 가져오기)."""
+        store = runner.models_dir()
+        try:
+            free = shutil.disk_usage(store.anchor or str(store)).free
+        except OSError:
+            free = 0
+        mine = {m["name"] for m in system.MODELS}
+        have = {m["name"] for m in system.ollama_status().get("models", [])}
+        watt = runner.mode() == "watt"
+        return {"mode": runner.mode(), "dir": str(store), "custom": settings.load().get("models_dir", ""),
+                "used": runner.store_size(store) if watt else 0, "free": free,
+                "importable": [n for n in runner.system_models() if n in mine and n not in have] if watt else []}
+
+    @_logged
+    def pick_models_dir(self) -> dict:
+        """모델 폴더 고르기 → 옮기기(받아 둔 모델이 있으면 함께). 같은 드라이브면 바로, 다른 드라이브면 복사라 오래 걸린다."""
+        if not self._window:
+            return {"ok": False, "error": "창이 없습니다"}
+        res = self._window.create_file_dialog(webview.FileDialog.FOLDER, directory=settings.load().get("models_dir") or "")
+        if not res:
+            return {"ok": False, "cancel": True}
+        folder = res[0] if isinstance(res, (list, tuple)) else res
+        return self.set_models_dir(folder)
+
+    @_logged
+    def set_models_dir(self, folder: str) -> dict:
+        """'' 이면 기본(데이터 폴더)으로."""
+        def work(cancel):
+            self.stop_all()  # 통역 창 · 입력창이 실행기를 쓰고 있다
+            dst = runner.move_models(folder or "", lambda d, t: self._emit(type="progress", task="move", done=d, total=t),
+                                     cancel) if folder else self._models_default(cancel)
+            return {"dir": dst}
+        return self._task("move", work)
+
+    def _models_default(self, cancel) -> str:
+        """고른 폴더 → 기본 폴더로 되돌리기."""
+        cur = settings.load().get("models_dir") or ""
+        if not cur:
+            return str(runner.models_dir())
+        src = runner.models_dir()
+        dst = runner.models_dir("")
+        was = runner.running()
+        runner.stop()
+        if src.exists():
+            dst.mkdir(parents=True, exist_ok=True)
+            for item in src.iterdir():
+                if cancel.is_set():
+                    raise RuntimeError("취소됨")
+                shutil.move(str(item), str(dst / item.name))
+            shutil.rmtree(src, ignore_errors=True)
+        settings.save({"models_dir": ""})
+        if was:
+            runner.start()
+        return str(dst)
+
+    @_logged
+    def import_model(self, name: str) -> dict:
+        """PC 의 Ollama 에 이미 있는 모델을 WATT 모델 폴더로(같은 드라이브면 공간을 더 쓰지 않음)."""
+        def work(cancel):
+            runner.import_model(name, lambda d, t: self._emit(type="progress", task="pull", model=name, status="가져오는 중",
+                                                              done=d, total=t, speed=0), cancel)
+            runner.stop()  # 새 모델 목록을 읽게 다시 켠다
+            runner.start()
+            self.save_settings({"model": name})
+            return system.ollama_status()
+        return self._task("pull", work)
 
     @_logged
     def pick_game_folder(self) -> dict:
@@ -889,6 +980,7 @@ class Api:
     def close(self) -> None:
         log.info("close button")
         self.stop_all()
+        runner.stop()
         if self._window:
             self._window.destroy()
 
@@ -945,9 +1037,10 @@ def main() -> int:
                                 min_size=(760, 560), frameless=True, easy_drag=False, background_color="#0A0D12")
     api._window = win
     win.events.shown += api.restore_window_rect
-    threading.Thread(target=api.tidy_models, daemon=True).start()  # 지난번에 남은 WATT 모델 정리
+    threading.Thread(target=api.start_runner, daemon=True).start()  # WATT 전용 AI 실행기 켜기 + 지난번에 남은 모델 정리
     win.events.closed += lambda: log.info("window closed")
     win.events.closed += api.stop_all
+    win.events.closed += runner.stop  # WATT 전용 실행기도 — VRAM 을 비운다
     try:
         # 캐시를 데이터 폴더 안에 — 기본값은 켤 때마다 %TEMP% 에 새 폴더를 남긴다(정리되지 않음)
         webview.start(gui="edgechromium", debug=bool(os.environ.get("WATT_DEBUG")), storage_path=str(paths.WEBVIEW))

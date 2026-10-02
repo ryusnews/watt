@@ -28,14 +28,15 @@ async function call(name, ...args) {
 /* 파이썬 → 화면 */
 window.WATT = {
   onEvent(ev) {
-    if (ev.type === 'progress') { S.progress[ev.task] = ev; renderSetup(); renderEngine(); renderUpdate(); if (ev.task === 'ai') renderAi(); return; }
+    if (ev.type === 'progress') { S.progress[ev.task] = ev; renderSetup(); renderEngine(); renderUpdate(); if (ev.task === 'ai') renderAi(); if (ev.task === 'move') renderModelsDir(); return; }
     if (ev.type === 'done') {
       delete S.progress[ev.task];
       if (!ev.ok) { toast(ev.error || '실패했습니다', 'err'); S.results[ev.task] = { error: ev.error }; }
       else {
         S.results[ev.task] = ev.result;
         if (ev.task === 'region' && ev.result) { S.regionPreview = ev.result.preview; toast('채팅 영역을 찾았습니다', 'ok'); }
-        if (ev.task === 'pull') toast('모델을 받았습니다', 'ok');
+        if (ev.task === 'pull') { toast('모델을 받았습니다', 'ok'); S.models = null; }
+        if (ev.task === 'move') { toast('모델 폴더를 옮겼습니다', 'ok'); S.models = null; call('models_info').then((x) => { S.models = x; renderModelsDir(); }); }
         if (ev.task === 'ocr') toast('글자 인식 언어 팩을 확인했습니다', 'ok');
         if (ev.task === 'ollama') toast('AI 실행기를 확인했습니다', 'ok');
         if (ev.task === 'cleanup') toast('WATT 가 설치한 것을 정리했습니다', 'ok');
@@ -324,15 +325,22 @@ const DETAIL = {
   },
   ollama() {
     const o = S.state.ollama, p = S.progress.ollama, run = p || S.state.busy.includes('ollama');
-    const chips = `<div class="chips">
-      <span class="chip ${o.installed ? 'ok' : 'bad'}">${icon(o.installed ? 'i-check' : 'i-box')}설치</span>
+    // 방식: PC 에 Ollama 가 있으면 그것을 권장(더 받지 않음), 없으면 WATT 전용을 받는다
+    const sys = o.system, opt = (v, label, tip, rec) => `<button class="${o.mode === v ? 'on' : ''}" data-act="runner_mode" data-v="${v}" ${run ? 'disabled' : ''} data-tip="${esc(tip)}">${label}${rec ? ' <span class="badge bronze">권장</span>' : ''}</button>`;
+    const modes = sys ? `<div class="seg mode-seg" role="radiogroup" aria-label="AI 실행기">
+      ${opt('system', `PC 의 Ollama <span class="mono muted">${esc(sys.version || '')}</span>`, '이미 설치된 Ollama 를 씁니다 — 더 받지 않습니다', true)}
+      ${opt('watt', 'WATT 전용', `WATT 폴더에만 · ${gb(o.download || 0) > 0 && !o.watt_ready ? gb(o.download) + 'GB 받기' : '받음'} · 지우면 깨끗이`, false)}</div>` : '';
+    const chips = modes + `<div class="chips">
+      <span class="chip ${o.installed ? 'ok' : 'bad'}">${icon(o.installed ? 'i-check' : 'i-box')}${o.mode === 'system' ? '설치됨' : '받음'}</span>
       <span class="chip ${o.running ? 'ok' : 'bad'}">${icon(o.running ? 'i-check' : 'i-power')}실행</span>
       ${o.version ? `<span class="chip mono">${esc(o.version)}</span>` : ''}</div>`;
     let prog = '';
-    if (run) prog = p && p.total ? `<div class="box"><div class="head"><span class="grow mono muted">OllamaSetup.exe</span><span class="pct">${pct(p)}%</span></div>
-      <div class="progress"><i style="width:${pct(p)}%"></i></div></div>` : '<div class="progress indet"><i></i></div>';
-    const remove = o.installed && o.watt && !run ? `<button class="btn ghost-danger" data-act="uninstall_ollama" data-tip="WATT 가 설치한 Ollama 를 제거합니다">제거</button>` : '';
-    const action = !o.installed ? `<button class="btn primary" data-act="install_ollama" ${run ? 'disabled' : ''}>${icon('i-download', 'sm')}설치</button>`
+    if (run) prog = p && p.total ? `<div class="box"><div class="head"><span class="grow mono muted">ollama-windows-amd64.zip</span><span class="pct">${pct(p)}%</span></div>
+      <div class="progress"><i style="width:${pct(p)}%"></i></div>
+      <div class="sub"><span>${gb(p.done)} / ${gb(p.total)} GB</span></div></div>` : '<div class="progress indet"><i></i></div>';
+    const remove = o.mode === 'watt' && o.installed && !run ? `<button class="btn ghost-danger" data-act="uninstall_ollama" data-tip="WATT 전용 AI 실행기와 받은 모델을 지웁니다">지우기</button>` : '';
+    // WATT 전용 Ollama(공식 포터블) — PC 에 Ollama 가 있어도 따로. 설치 창 · 관리자 권한 없이 WATT 폴더에 푼다
+    const action = !o.installed ? `<button class="btn primary" data-act="install_ollama" ${run ? 'disabled' : ''} data-tip="WATT 폴더에만 · 설치 창 없이">${icon('i-download', 'sm')}받기 ${o.download ? gb(o.download) + 'GB' : ''}</button>`
       : `<span class="inline">${remove}${!o.running ? `<button class="btn primary" data-act="start_ollama" ${run ? 'disabled' : ''}>${icon('i-power', 'sm')}켜기</button>` : ''}</span>`;
     return [chips + prog, action];
   },
@@ -359,10 +367,17 @@ const DETAIL = {
         <span>${p && p.speed ? `${(p.speed / 1024 ** 2).toFixed(0)} MB/s` : ''}${left != null ? ` · ${Math.ceil(left / 60)}분` : ''}</span></div></div>`;
     }
     const m = st.models.find((x) => x.name === sel) || {};
+    if (!S.models) call('models_info').then((x) => { S.models = x; renderSetup(); renderModelsDir(); });
+    const can = S.models && S.models.importable.includes(sel);
     const action = p || st.busy.includes('pull') ? ''
+      : !m.installed && can ? `<span class="inline"><button class="btn" data-act="pull_model" data-tip="새로 받기">${icon('i-download', 'sm')}받기</button>
+        <button class="btn primary" data-act="import_model" data-tip="PC 의 Ollama 에 이미 받은 모델 — 다시 받지 않습니다">${icon('i-folder', 'sm')}가져오기</button></span>`
       : !m.installed ? `<button class="btn primary" data-act="pull_model">${icon('i-download', 'sm')}받기</button>`
       : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>` : '<span class="badge ok">사용 중</span>';
-    const terms = `<p class="terms-line">받으면 Google <a href="#" data-url="https://ai.google.dev/gemma/terms">Gemma 이용 약관</a>에 동의하는 것으로 봅니다</p>`;
+    const v = st.vram;
+    const vramLine = v && v.available != null ? `<div class="facts vram-facts" data-tip="지금 쓰는 VRAM ${v.used}GB / ${v.total}GB${v.wow ? ' · 와우 켜짐' : ` · 와우 꺼짐 — 켜면 약 ${v.wow_est}GB 더 씀(예상)`}${v.watt_loaded ? ` · 지금 올린 WATT 모델 ${v.watt_loaded}GB 포함` : ''}">
+      ${icon('i-gauge', 'sm')}<span>번역 모델에 쓸 VRAM <b>${v.available}GB</b></span><span class="muted">${v.wow ? '와우 켜진 지금 기준' : '와우 몫 빼고'}</span></div>` : '';
+    const terms = `${vramLine}<p class="terms-line">받으면 Google <a href="#" data-url="https://ai.google.dev/gemma/terms">Gemma 이용 약관</a>에 동의하는 것으로 봅니다</p>`;
     return [`<div class="models">${cards}</div>${terms}${box}`, action];
   },
   addon() {
@@ -442,6 +457,13 @@ async function act(name, d = {}) {
   if (name === 'enable_ai') { const r = await call('enable_ai', null); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
   if (name === 'toggle_ai') { const v = d.v, on = (S.ai && S.ai.langs || []).includes(v); const r = await call('set_ai_lang', v, !on); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
   if (name === 'install_ollama') return call('install_ollama');
+  if (name === 'runner_mode') {
+    const o = S.state.ollama;
+    if (d.v === o.mode) return;
+    if (d.v === 'watt' && !o.watt_ready) return call('install_ollama');  // 전용은 받기부터(받으면 그 방식으로)
+    S.models = null; return call('set_runner_mode', d.v);
+  }
+  if (name === 'import_model') { S.progress.pull = { model: S.selModel || st.settings.model, done: 0, total: 0, status: '가져오는 중' }; renderSetup(); S.models = null; return call('import_model', S.selModel || st.settings.model); }
   if (name === 'start_ollama') return call('start_ollama');
   if (name === 'pull_model') { S.progress.pull = { model: S.selModel || st.settings.model, done: 0, total: 0, status: '준비 중' }; renderSetup(); return call('pull_model', S.selModel || st.settings.model); }
   if (name === 'cancel_pull') return call('cancel', 'pull');
@@ -457,8 +479,23 @@ async function act(name, d = {}) {
 }
 
 /* ---------- 번역 설정 ---------- */
+// 모델 폴더 — 모델이 커서(4–8GB) 다른 드라이브로 옮길 수 있게. 고르면 그 아래 WATT-models 에 둔다
+function renderModelsDir() {
+  const el = $('#set-models-dir'); if (!el) return;
+  const m = S.models, p = S.progress.move, run = p || (S.state && S.state.busy.includes('move'));
+  if (!m) { call('models_info').then((x) => { S.models = x; renderModelsDir(); }); return; }
+  $('#models-dir-field').hidden = m.mode !== 'watt';  // PC 의 Ollama 는 모델 폴더를 Ollama 설정이 정한다
+  const o = S.state && S.state.ollama;
+  $('#set-runner').value = (o && o.mode) || m.mode;
+  $('#set-runner').querySelector('option[value=system]').disabled = !(o && o.system);
+  el.textContent = run ? `옮기는 중 ${p && p.total ? pct(p) + '%' : ''}` : m.dir;
+  el.dataset.tip = `${m.dir} · 쓰는 용량 ${gb(m.used)}GB · 빈 공간 ${gb(m.free)}GB`;
+  $('#set-models-pick').disabled = !!run;
+  $('#set-models-reset').hidden = !m.custom || !!run;
+}
 function renderSettings() {
   const c = S.state && S.state.settings; if (!c) return;
+  renderModelsDir();
   renderHotkey();
   const games = (S.games || []).filter((g) => g.supported);
   const cur = c.game_dir || defaultGame(S.games || []) || '';
@@ -839,6 +876,13 @@ function bind() {
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
+  $('#set-runner').onchange = async (e) => {
+    const o = S.state.ollama, v = e.target.value;
+    if (v === 'watt' && !o.watt_ready) { show('setup'); S.step = STEPS.findIndex((s) => s.key === 'ollama'); renderSetup(); e.target.value = o.mode; return; }
+    S.models = null; await call('set_runner_mode', v); refresh(true);
+  };
+  $('#set-models-pick').onclick = async () => { const r = await call('pick_models_dir'); if (r && r.error) toast(r.error, 'warn'); renderModelsDir(); };
+  $('#set-models-reset').onclick = async () => { if (await confirmBox('모델 폴더를 기본으로', '받은 모델을 WATT 데이터 폴더로 옮깁니다', '옮기기', '취소', false)) { await call('set_models_dir', ''); renderModelsDir(); } };
   $('#set-resetpos').onclick = async () => { await call('reset_overlay'); toast('통역 창을 채팅창 위로 옮겼습니다', 'ok'); };
   // 보내기 입력창 단축키 — 눌러서 새 조합을 누른다(Esc 취소). 런처가 다른 프로그램과 겹치는지 보고 저장
   $('#set-hotkey').onclick = () => recordHotkey();
@@ -927,7 +971,9 @@ function mockApi() {
     app: { version: '0.1.0', full: 'WoW AI Translation Tool' }, settings,
     system: { windows: 'Windows 11 (빌드 26200)', ram_gb: 31, gpu: { name: 'NVIDIA GeForce RTX 5080', vram_gb: 15.9 }, free_disk_gb: 764 },
     ocr: { langs: [{ code: 'en-US', label: '영어', installed: true }, { code: 'ko', label: '한국어', installed: true }, { code: 'zh-Hans-CN', label: '중국어(간체)', installed: true }, { code: 'ru-RU', label: '러시아어', installed: true }], missing: [] },
-    ollama: { installed: true, running: true, version: '0.34.4', models: [{ name: 'gemma4:12b' }, { name: 'qwen3:14b' }], loaded: [] },
+    ollama: { mode: 'system', chosen: '', installed: true, running: true, version: '0.34.4', models: [{ name: 'gemma4:12b' }, { name: 'qwen3:14b' }], loaded: [],
+      watt: false, watt_ready: false, download: 1461196158, system: { exe: 'C:\Ollama\ollama.exe', version: '0.34.4' } },
+    vram: { total: 15.9, used: 5.7, wow: false, wow_est: 4, watt_loaded: 0, available: 5.4, pick: 'gemma4:e4b' },
     models: [{ name: 'gemma4:12b', label: 'Gemma 4 12B', download_gb: 7.7, vram_gb: 8.1, verified: true, installed: true, recommended: true },
       { name: 'gemma4:e4b', label: 'Gemma 4 E4B', download_gb: 6.6, vram_gb: 7, verified: false, installed: false, recommended: false },
       { name: 'gemma4:e2b', label: 'Gemma 4 E2B', download_gb: 4.6, vram_gb: 5, verified: false, installed: false, recommended: false }],
@@ -953,7 +999,7 @@ function mockApi() {
     reset_term: (id) => { const t = mockTerms.find((x) => x.id === id); t.origin = 'base'; return ok({ ok: true }); },
     save_settings: (c) => ok(Object.assign(settings, c)),
     start: (r) => { running[r] = true; return ok(true); }, stop: (r) => { running[r] = false; return ok(false); },
-    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), set_hotkey: (c) => ok({ ok: true, combo: c }), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
+    refind: () => ok(true), open_url: () => ok(true), reset_overlay: () => ok(true), reset_input: () => ok(true), set_hotkey: (c) => ok({ ok: true, combo: c }), models_info: () => ok({ mode: 'watt', dir: 'C:\\Users\\me\\AppData\\Local\\WATT\\models', custom: '', used: 7.2e9, free: 120e9, importable: ['gemma4:e4b'] }), pick_models_dir: () => ok({ cancel: true }), set_models_dir: () => ok({}), import_model: () => ok({ started: true }), open_folder: () => ok(true), minimize: () => ok(), close: () => ok(),
     install_ocr: () => ok({ started: true }), install_ollama: () => ok({ started: true }), start_ollama: () => ok({ started: true }),
     pull_model: () => ok({ started: true }), cancel: () => ok(true), delete_model: () => ok({}), remove_addon: () => ok({}),
     remove_ocr: () => ok({ started: true }), uninstall_ollama: () => ok({ started: true }),
