@@ -663,6 +663,7 @@ class Overlay:
         self.menu = tk.Menu(self.win, tearoff=0, bg=tks.PANEL, fg=tks.FG, activebackground=tks.CTRL,
                             activeforeground=tks.TEAL, bd=0, font=(tks.SANS, 9))
         self.on_refind = None
+        self.on_translate = None  # 광고 아님으로 고친 접은 광고를 번역 줄에
         self.menu.add_command(label="채팅 영역 다시 찾기", command=lambda: self.on_refind and self.on_refind())
         self.menu.add_command(label="원문 보기", command=self._toggle_original)
         self.menu.add_separator()
@@ -728,7 +729,47 @@ class Overlay:
         save_ui(ui)
 
     def _menu(self, e):
-        self.menu.tk_popup(e.x_root, e.y_root)
+        it = None
+        if e.widget is self.text:
+            idx = self.text.index(f"@{e.x},{e.y}")
+            n = next((int(t[2:]) for t in self.text.tag_names(idx) if t.startswith("it") and t[2:].isdigit()), None)
+            if n is not None and n < len(self.items):
+                it = list(self.items)[n]
+        menu = self.menu
+        if it and it.get("name"):  # 메시지 위에서 — 그 사람을 바로 고친다(#13)
+            menu = tk.Menu(self.win, tearoff=0, bg=tks.PANEL, fg=tks.FG, activebackground=tks.CTRL,
+                           activeforeground=tks.TEAL, bd=0, font=(tks.SANS, 9))
+            name = it["name"]
+            menu.add_command(label=f"{name} 숨기기", command=lambda: self.person(name, "hide"))
+            if it.get("kind") == "ad":
+                menu.add_command(label="광고 아님", command=lambda: self.person(name, "allow", it))
+            else:
+                menu.add_command(label="광고로", command=lambda: self.person(name, "block", it))
+            menu.add_separator()
+            for i in range(self.menu.index("end") + 1):
+                if self.menu.type(i) == "separator":
+                    menu.add_separator()
+                else:
+                    menu.add_command(label=self.menu.entrycget(i, "label"), command=self.menu.entrycget(i, "command"))
+        menu.tk_popup(e.x_root, e.y_root)
+
+    def person(self, name: str, what: str, it: dict | None = None) -> None:
+        """숨기기 · 광고 아님 · 광고로 — 설정에 남기고(런처 번역 설정에서 되돌림) 지금 창에도 바로."""
+        key = {"hide": "hidden_names", "allow": "ad_allow", "block": "ad_block"}[what]
+        names = [n for n in self.cfg.get(key, []) if n != name] + [name]
+        other = {"allow": "ad_block", "block": "ad_allow"}.get(what)
+        changes = {key: names[-200:]}
+        if other:
+            changes[other] = [n for n in self.cfg.get(other, []) if n != name]
+        self.cfg.update(settings.save(changes))
+        if what == "hide":
+            for x in [x for x in self.items if x.get("name") == name]:
+                self.items.remove(x)
+        elif it is not None:
+            it["kind"] = "chat" if what == "allow" else "ad"
+            if what == "allow" and not it.get("ko") and self.on_translate:
+                self.on_translate(it)  # 접어 둔 광고 — 이제 번역
+        self.render()
 
     def add(self, item: dict):
         self.items.append(item)
@@ -740,6 +781,8 @@ class Overlay:
         for n, it in enumerate(self.items):
             if n:
                 self.text.insert("end", "\n")
+            start = self.text.index("end-1c")
+            self._tag_item(n, start)
             lang = it["lang"] if it["lang"] in tks.LANG else "en"
             tag = it.get("tag") or lang  # 원문 언어(ES · DE …) — 색은 그 언어 것, 없으면 문자 종류 것
             self.text.insert("end", tag.upper(), "lang_" + (tag if tag in tks.LANG else lang))
@@ -754,8 +797,16 @@ class Overlay:
                     self.text.insert("end", "\n" + it["body"], "orig")
             else:
                 self.text.insert("end", it["body"], "pending")
+        self._tag_item(None, None)
         self.text.configure(state="disabled")
         self.text.see("end")
+
+    def _tag_item(self, n, start) -> None:
+        """앞 메시지의 범위를 'it<번호>' 태그로 닫고 새 메시지를 연다."""
+        prev = getattr(self, "_open", None)
+        if prev:
+            self.text.tag_add(f"it{prev[0]}", prev[1], "end-1c")
+        self._open = (n, start) if n is not None else None
 
 
 # ---- 본체
@@ -773,6 +824,7 @@ class Live:
         self.ocr = Reader(SCALE)
         self.overlay = Overlay(self.root, self.region, self.cfg)
         self.overlay.on_refind = self.refind
+        self.overlay.on_translate = self.jobs.put
         self.events: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
         self.seen = Seen()
@@ -952,7 +1004,9 @@ class Live:
             m["id"] = f"{self.trace.sid}-{self.msg_no}"
             if m["lang"] == "en" and korean_body(m["body"]):
                 m["lang"] = "ko"  # 링크 뒤 한국어('[지식인의 부적]혹시 이거 퀘스트 어디서…')를 영어로 판정했다
-            if self.first:
+            if m["name"] and m["name"] in self.cfg.get("hidden_names", []):
+                decision = "hidden"  # 통역 창에서 숨긴 사람(#13)
+            elif self.first:
                 decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
             elif edge is not None and (i > edge if newest_top else i < edge):
                 decision = "skip_old"  # 앞 화면에도 있던 메시지보다 옛 쪽
@@ -997,6 +1051,10 @@ class Live:
                     self.recent.append((now, bk))
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
                 ad = self.ads.check(m["name"], m["body"])
+                if m["name"] in self.cfg.get("ad_allow", []) and ad["kind"] == "ad":
+                    ad = {**ad, "kind": "chat", "why": ad.get("why", []) + ["사용자: 광고 아님"]}
+                elif m["name"] in self.cfg.get("ad_block", []):
+                    ad = {**ad, "kind": "ad", "why": ad.get("why", []) + ["사용자: 광고"]}
                 m["kind"], m["ad"] = ad["kind"], ad
                 if decision == "queued" and ad["kind"] == "ad" and self.cfg.get("ad_filter", "fold") != "show":
                     decision = "ad_" + self.cfg.get("ad_filter", "fold")  # 번역하지 않는다

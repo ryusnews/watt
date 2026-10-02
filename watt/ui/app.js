@@ -459,6 +459,11 @@ function renderSettings() {
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
   $('#set-alpha').value = Math.round(c.overlay_alpha * 100); $('#out-alpha').textContent = Math.round(c.overlay_alpha * 100) + '%';
   $('#set-lines').value = c.overlay_lines; $('#out-lines').textContent = c.overlay_lines;
+  // 숨긴 사람 · 광고 고침(#13) — 통역 창 오른쪽 클릭으로 정한 것, × 로 되돌리기
+  const people = [...(c.hidden_names || []).map((n) => ['hidden_names', n, '숨김']), ...(c.ad_allow || []).map((n) => ['ad_allow', n, '광고 아님']),
+    ...(c.ad_block || []).map((n) => ['ad_block', n, '광고'])];
+  $('#people-field').hidden = !people.length;
+  setHTML($('#set-people'), people.map(([k, n, label]) => `<span class="chip">${esc(n)}<small>${label}</small><button class="chip-x" data-k="${k}" data-n="${esc(n)}" aria-label="${esc(n)} 되돌리기">${icon('i-x')}</button></span>`).join(''));
   renderAi();
 }
 
@@ -750,6 +755,8 @@ function bind() {
     if (!await confirmBox('받은 AI 글자 인식 파일을 지울까요?')) return;
     const r = await call('remove_ai'); if (r.error) toast(r.error, 'err'); renderAi();
   };
+  $('#set-people').onclick = (e) => { const b = e.target.closest('button[data-k]'); if (!b) return; const k = b.dataset.k;
+    save({ [k]: (S.state.settings[k] || []).filter((n) => n !== b.dataset.n) }); renderSettings(); };
   $('#set-korean').onclick = () => { save({ show_korean: S.state.settings.show_korean === false }); renderSettings(); };
   $('#set-logs').onclick = () => { save({ keep_logs: !S.state.settings.keep_logs }); renderSettings(); };
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };

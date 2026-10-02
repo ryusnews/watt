@@ -331,6 +331,9 @@ button.chip { border: 0; cursor: pointer; } button.chip:hover { background: var(
 .te-grid input:focus { box-shadow: 0 0 0 1.5px var(--teal); }
 .te-grid .te-switch { flex-direction: row; align-items: center; justify-content: space-between; align-self: end; height: 34px; }
 .modal-foot .grow { flex: 1; }
+.people { justify-content: flex-end; max-width: 70%; }
+.people .chip { padding: 4px 6px 4px 10px; font-size: 12px; }
+.people .chip small { color: var(--faint); margin-left: 2px; }
 .te-verify { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
 .te-verify .badge { gap: 4px; padding: 2px 4px 2px 8px; }
 .te-verify .badge button { width: 18px; height: 18px; border: 0; border-radius: 5px; background: transparent; color: inherit; display: grid; place-items: center; }

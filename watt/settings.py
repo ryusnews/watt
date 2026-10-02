@@ -14,6 +14,9 @@ DEFAULTS = {
     "show_original": False,      # 통역 창에 원문도 보이기
     "ai_langs": [],              # AI 글자 인식으로 보강할 언어(ko · zh · ru) — 켤 때 그 모델만 받는다
     "ai_gpu": False,             # AI 글자 인식을 GPU(DirectML)로 — VRAM 을 1–2GB 더 쓴다(크기마다 작업 공간을 잡아 둔다). 기본 CPU
+    "hidden_names": [],          # 통역 창에서 숨긴 사람(#13) — 이 PC에서만
+    "ad_allow": [],              # 광고 아님으로 고친 사람(자동 판정이 틀렸을 때)
+    "ad_block": [],              # 광고로 고친 사람
     "show_korean": True,         # 한국어 메시지도 번역 없이 그대로 보이기(채팅창과 순서 맞춰 보기)
     "ad_filter": "fold",         # 광고: show 보이기 | fold 접기(번역 안 함) | hide 숨기기
     "chat_newest": "bottom",     # 채팅창에서 새 메시지가 나타나는 쪽: bottom(기본) | top(역순 정렬 애드온)
