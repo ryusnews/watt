@@ -75,6 +75,9 @@ def report(out: Path) -> str:
             # 앱이 번역하지 않는 것은 빼고 — 한국어(그대로 보임), 이름 없는 줄, 잡음, 화면 맨 위에서 잘린 메시지(머리가 위로 밀려 나감)
             if m["lang"] == "ko" or not m["name"] or w < 2 or is_junk(m["body"], True) or m["rows"][0]["y"] < pitch * 0.8:
                 continue
+            # 본문이 한글 [괄호]뿐 — 머리말 [1. 공개 - 오그리마] 를 본문으로 다시 읽은 것('[1.개= 오극리마]', #116)
+            if not re.sub(r"\W", "", re.sub(r"\[[^\]]*[가-힣][^\]]*\]?", "", m["body"])):
+                continue
             k = dk(m["body"])
             if not any(difflib.SequenceMatcher(None, k, q).ratio() >= 0.85 for q in seen):
                 seen[k] = (s["t"], m)
@@ -90,7 +93,8 @@ def report(out: Path) -> str:
                 first.append(dk(e["body"]))
     missed, at_start = [], []
     for k, (t, m) in seen.items():
-        hit = any(difflib.SequenceMatcher(None, k, q).ratio() >= 0.7 for q in got)
+        # 흐려지며 사라지는 줄은 앞부분만 읽힌다('[Cold' ← [Coldflame Saber], #116) — 번역한 글의 앞부분이면 같은 것
+        hit = any(difflib.SequenceMatcher(None, k, q).ratio() >= 0.7 or (len(k) >= 3 and q.startswith(k)) for q in got)
         old = any(difflib.SequenceMatcher(None, k, q).ratio() >= 0.85 for q in before)  # 켜기 전 · 창 밖에서 이미 번역
         if hit or old:
             continue
