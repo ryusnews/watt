@@ -70,7 +70,7 @@ def _cased(word: str, like: str) -> str:
 def fix_token(tok: str) -> str:
     LEX = _lex()
     low = tok.lower()
-    if low in LEX or len(tok) == 1:  # 한 글자(I · 1 · l)는 문맥 없이 못 가른다 — 홀로 선 l 은 fix() 가 I 로
+    if low in LEX or len(tok) == 1 or set(tok) == {"I"}:  # 한 글자(I · 1 · l)는 문맥 없이 못 가른다 — 홀로 선 l 은 fix() 가 I 로. II · III 은 로마 숫자
         return tok
     # 숫자 자리: 진짜 숫자(0 · 2–9)가 하나라도 있어야 숫자로 본다 — log · lol 같은 낱말은 건드리지 않는다
     m = LV_NUM.match(tok)
@@ -116,6 +116,11 @@ def _im(m: re.Match) -> str:
 ZH_FIXES = [("咐魔", "附魔")]
 
 
+# 메시지 끝에 홀로 남은 I · l · | · ! 조각은 느낌표 — 줄바꿈된 !!! 를 Ill 로 읽었다(WTB TB SUMMON Ill, #114).
+# l · | · ! 가 하나는 있어야(II · III 같은 로마 숫자는 그대로)
+_BANGS = re.compile(r"(\s)(?=[Il|!1]*[l|!])([Il|!1]{2,4})\s*$")
+
+
 def fix(text: str) -> str:
     """라틴 낱말을 고친다(한글 · 키릴은 그대로). 홀로 선 l · | 는 I. 중국어는 확인된 글자 쌍만."""
     for a, b in ZH_FIXES:
@@ -124,4 +129,5 @@ def fix(text: str) -> str:
     text = re.sub(r"((?:^|[,.!?]\s*|\b(?:hi|hey|hello|and|so|but|yes|yeah|ok)\s+))1m\s+([A-Za-z][A-Za-z']*)", _im, text,
                   flags=re.I)
     text = re.sub(r"(?:(?<=\s)|^)[l|](?=\s+[a-z])", "I", text)
+    text = _BANGS.sub(lambda m: m.group(1) + "!" * len(m.group(2)), text)
     return TOKEN.sub(lambda m: fix_token(m.group(0)), text)
