@@ -11,6 +11,7 @@ import unicodedata
 import json
 import queue
 import re
+import logging
 import threading
 import time
 import tkinter as tk
@@ -1022,7 +1023,21 @@ class Live:
                          scale=SCALE, model=incoming.MODEL)
         threading.Thread(target=self.capture_loop, daemon=True).start()
         threading.Thread(target=self.translate_loop, daemon=True).start()
+        threading.Thread(target=self.keep_warm, daemon=True).start()
         self.root.after(200, self.poll)
+
+    WARM_EVERY = 600  # 초 — 모델의 keep_alive(30분)보다 짧게
+
+    def keep_warm(self) -> None:
+        """'켤 때 모델 미리 올리기'를 통역을 켤 때 한다. 예전엔 모델을 바꿀 때만 올려 첫 번역이 28초 걸렸다(2026-10-04 14:19).
+        켜 둔 동안 10분마다 다시 알려 채팅이 30분 조용해도 모델이 내려가지 않게 — 올라가 있으면 Ollama 는 시간만 늘린다."""
+        from . import llm
+        while self.running:
+            if self.cfg.get("preload", True):
+                t0 = time.monotonic()
+                llm.preload(incoming.MODEL)
+                logging.info("warm %s %.1fs", incoming.MODEL, time.monotonic() - t0)
+            time.sleep(self.WARM_EVERY)
 
     @staticmethod
     def initial_region() -> dict:
