@@ -25,9 +25,9 @@ BASE = ("You translate one World of Warcraft Classic chat message into natural K
         "readable parts. Keep player names, numbers and [bracketed] text as units. Put only the translation in 'ko'. "
         "Put the language the message is written in as an ISO 639-1 code in 'src' (en, es, de, fr, pt, ru, uk, zh, ...).")
 # 글에 [ 가 있을 때만 — 늘 넣으면 링크가 없는 글의 용어(血色)까지 괄호를 씌우고 사전 용어를 놓쳤다(2026-10-01)
-LINK_RULES = ("[Bracketed text] is an item, quest or NPC link in the writer's client language: translate each one as a single "
-              "[bracketed] unit in place — the official Korean client name if you know it, otherwise a plain transliteration "
-              "(never a different place or item); Korean ones stay exactly as written.")
+LINK_RULES = ("[Bracketed text] is an item, quest or NPC link in the writer's client language: keep each one as a single "
+              "[bracketed] unit in place. English ones stay exactly as written; Chinese or Russian ones become a plain Korean "
+              "transliteration (never a different place or item); Korean ones stay exactly as written.")
 # 글자 종류에 따라 붙이는 규칙 — 전부 넣으면 870토큰이 되어 게임 중 번역이 3~7초로 느려졌다(2026-10-01)
 LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/role and wants to JOIN a group "
                "(Tank lfg WC = 탱커가 통곡의 동굴 파티를 찾음); 'LF/LFM <role>' = recruiting that role. "
@@ -129,6 +129,35 @@ def fix_terms(out: str, hints: dict) -> str:
     return out
 
 
+LINK = re.compile(r"\[[^\[\]]+\]")
+_link_ko: dict[str, str] = {}  # 한자 · 키릴 링크 → 처음 옮긴 한국어 — 같은 링크는 늘 같은 이름으로(#113)
+
+
+def fix_links(src: str, out: str, hints: dict) -> str:
+    """번역의 [링크]를 원문 링크와 차례로 맞춘다. 같은 링크를 볼 때마다 다른 이름으로 지어냈다
+    ([Coldflame Saber] → [차가운 불꽃의 검], 몇 분 뒤 [냉기불꽃 세이버] — 2026-10-04 모니터링, #113).
+    - 사전에 있는 링크 → 사전 이름
+    - 영어 등 라틴 · 한글 링크 → 원문 그대로(한국 클라이언트 이름은 모델이 모른다 — 지어내지 않게)
+    - 한자 · 키릴 링크 → 처음 옮긴 이름을 기억해 다음부터 같게
+    링크 개수가 다르면(모델이 합치거나 뺐으면) 손대지 않는다."""
+    a, b = LINK.findall(src), LINK.findall(out)
+    if not a or len(a) != len(b):
+        return out
+    low = {k.lower(): v.split("(")[0].strip() for k, v in hints.items()}
+    parts, pos = [], 0
+    for s_link, o_link, m in zip(a, b, LINK.finditer(out)):
+        inner = s_link[1:-1].strip()
+        if inner.lower() in low:
+            want = f"[{low[inner.lower()]}]"
+        elif _CJK.search(inner) or _CYR.search(inner):
+            want = _link_ko.setdefault(s_link, o_link)
+        else:
+            want = s_link
+        parts.append(out[pos:m.start()] + want)
+        pos = m.end()
+    return "".join(parts) + out[pos:]
+
+
 def translate(text: str, model: str | None = None, chinese: bool = False) -> tuple[str, float]:
     ko, secs, _ = translate_src(text, model, chinese)
     return ko, secs
@@ -145,7 +174,7 @@ def translate_src(text: str, model: str | None = None, chinese: bool = False) ->
         terms = {k: v for k, v in terms.items() if k.lower() not in ("pst", "pm")}
     out, secs = chat_json(model or MODEL, system_prompt(terms, text, chinese), text, SCHEMA)
     src = str(out.get("src", "")).strip().lower()[:2]
-    return fix_terms(out.get("ko", "").strip(), terms), secs, src if src.isalpha() else ""
+    return fix_links(text, fix_terms(out.get("ko", "").strip(), terms), terms), secs, src if src.isalpha() else ""
 
 
 BATCH_SCHEMA = {"type": "object", "properties": {"items": {"type": "array", "items": {
@@ -188,7 +217,7 @@ def translate_batch(items: list[tuple[str, bool]], model: str | None = None) -> 
     res = []
     for n, (_, tm) in enumerate(prepped):
         src = str(got[n].get("src", "")).strip().lower()[:2]
-        res.append((fix_terms(str(got[n]["ko"]).strip(), tm), src if src.isalpha() else ""))
+        res.append((fix_links(prepped[n][0], fix_terms(str(got[n]["ko"]).strip(), tm), tm), src if src.isalpha() else ""))
     return res, secs
 
 
