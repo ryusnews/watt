@@ -115,21 +115,34 @@ _wow_cache: list = [0.0, None]
 
 
 def _wow_measure(pids: list[int]) -> float | None:
-    """와우 프로세스들이 쓰는 전용 VRAM(GB) — Windows 성능 카운터(GPU Process Memory), 5분 캐시."""
-    if time.monotonic() - _wow_cache[0] < 300:
-        return _wow_cache[1]
-    got = None
+    """와우 프로세스들이 쓰는 전용 VRAM(GB) — Windows 성능 카운터(GPU Process Memory), 5분 캐시.
+    재는 데 PowerShell 로 1.7초 — 런처 get_state 가 5분마다 그만큼 멈췄다(#117). 그래서 뒤에서 재고, 그동안은 지난 값
+    (처음엔 None → wow_vram 이 기억한 값 · 해상도 어림)을 돌려준다."""
+    if time.monotonic() - _wow_cache[0] >= 300 and not _wow_busy.locked():
+        threading.Thread(target=_wow_refresh, args=(list(pids),), daemon=True).start()
+    return _wow_cache[1]
+
+
+_wow_busy = threading.Lock()
+
+
+def _wow_refresh(pids: list[int]) -> None:
+    if not _wow_busy.acquire(blocking=False):
+        return
     try:
-        q = ",".join(f"'\\GPU Process Memory(pid_{p}_*)\\Dedicated Usage'" for p in pids)
-        out = subprocess.run(["powershell", "-NoProfile", "-Command",
-                              f"(Get-Counter {q} -ErrorAction SilentlyContinue).CounterSamples | ForEach-Object {{ $_.CookedValue }}"],
-                             capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
-        vals = [float(x) for x in out.stdout.split() if x.replace(".", "").replace(",", "").isdigit()]
-        got = sum(vals) / 1024 ** 3 if vals else None
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        pass
-    _wow_cache[:] = [time.monotonic(), got]
-    return got
+        got = None
+        try:
+            q = ",".join(f"'\\GPU Process Memory(pid_{p}_*)\\Dedicated Usage'" for p in pids)
+            out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                  f"(Get-Counter {q} -ErrorAction SilentlyContinue).CounterSamples | ForEach-Object {{ $_.CookedValue }}"],
+                                 capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
+            vals = [float(x) for x in out.stdout.split() if x.replace(".", "").replace(",", "").isdigit()]
+            got = sum(vals) / 1024 ** 3 if vals else None
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
+        _wow_cache[:] = [time.monotonic(), got]
+    finally:
+        _wow_busy.release()
 
 
 def wow_vram(pids: list[int] | None = None) -> tuple[float, str]:
