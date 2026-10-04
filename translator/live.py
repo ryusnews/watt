@@ -599,13 +599,32 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     return msgs
 
 
+def _outside_links(rows: list[dict]) -> Counter:
+    """줄마다 [ ] 밖 글자 수 — 링크가 다음 줄로 넘어가도([塞 / 克隆尼亚]) 이어서 본다."""
+    out, inside = Counter(), False
+    for r in rows:
+        n = 0
+        for ch in r["text"]:
+            if ch == "[":
+                inside = True
+            elif ch == "]":
+                inside = False
+            elif not inside and ch.isalpha():
+                n += 1
+        out[r["lang"]] += n
+    return out
+
+
 def settle_language(m: dict) -> None:
     """메시지 언어를 줄 전체로 정한다(첫 줄만 보지 않는다). 줄바꿈된 러시아어·우크라이나어가 첫 줄만 영어로 읽혀
     메시지 전체가 영어로 번역되던 문제(2026-09-30 분석). 러시아어로 정해지면 영어로 고른 줄은 러시아어 엔진 결과로 바꾼다."""
     weight = Counter()
     for r in m["rows"]:
         weight[r["lang"]] += len(r["text"])
-    foreign = [(w, lang) for lang, w in weight.items() if lang in ("ru", "zh")]
+    outside = _outside_links(m["rows"])
+    if sum(outside.values()):  # [링크] · [채널] [이름] 밖의 글자로 — 영어 문장 끝 중국어 퀘스트 링크 하나로 zh 가 되던 것(#115)
+        weight = outside
+    foreign = [(w, lang) for lang, w in weight.items() if lang in ("ru", "zh") and w]
     if weight.get("ko", 0) > sum(weight.values()) / 2:
         m["lang"] = "ko"
     elif foreign:
