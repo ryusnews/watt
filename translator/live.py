@@ -596,7 +596,39 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
                 orphans.append(r)
     for m in msgs:
         settle_language(m)
+        settle_jamo(m)
     return msgs
+
+
+# 한국어 엔진이 초성을 닮은 라틴 글자로 읽는다(Sarasa Gothic K 16px, 2026-10-05 그려서 잼): ㅇ → o · 0, ㄱ → 7, ㅌ → E,
+# ㅍ → Ⅱ, ㄴ → L, ㄳ → μ · u, ㅊ → 츠. 그래서 ㅎㅇ · ㅇㅇ · ㄱㄱ 같은 초성 채팅이 영어(oo · 77 · EE)로 보여 번역됐다(#133)
+JAMO_LOOK = str.maketrans({"o": "ㅇ", "O": "ㅇ", "0": "ㅇ", "7": "ㄱ", "E": "ㅌ", "Ⅱ": "ㅍ", "L": "ㄴ", "μ": "ㄳ"})
+JAMO_BODY = re.compile(r"^[ㄱ-ㅣoO07EⅡLμ~!?.^;,\s]+$")
+CHU = re.compile(r"츠(?=[ㄱ-ㅎ]|$)")  # ㅊㅋ → 츠ㅋ — 초성 옆의 츠는 ㅊ
+
+
+def settle_jamo(m: dict) -> None:
+    """한 줄짜리 짧은 메시지가 한국어 엔진으로 초성(+ 초성을 닮은 글자)뿐이면 한국어 초성 채팅으로 — 닮은 글자는 초성으로."""
+    if m["lang"] == "ko":
+        if JAMO.search(m["body"]) and len(m["body"]) <= 12:
+            body = m["body"].translate(JAMO_LOOK) if JAMO_BODY.match(m["body"]) else m["body"]  # ㅈㅈo → ㅈㅈㅇ
+            m["body"] = CHU.sub("ㅊ", body)
+        return
+    if len(m["rows"]) != 1:
+        return
+    ko = m["rows"][0].get("cand", {}).get("ko")
+    if not ko:
+        return
+    h = parse_header(ko, True)
+    body = (h["body"] if h else ko).strip()
+    if body == "u":  # ㄳ 한 글자를 u 로 — 영어 'u' 한 글자만 보낸 메시지는 번역할 것도 없다
+        body = "μ"
+    core = re.sub(r"[~!?.^;,\s]", "", body)
+    if not core or len(core) > 8 or not JAMO_BODY.match(body):
+        return
+    if not JAMO.search(core) and len(core) > 4:  # 초성이 하나도 없으면 짧은 것만(oo · 77 · EE)
+        return
+    m["lang"], m["body"] = "ko", CHU.sub("ㅊ", body.translate(JAMO_LOOK))
 
 
 def _letters_outside_links(rows: list[dict]) -> Counter:
