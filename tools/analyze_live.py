@@ -7,6 +7,7 @@ python tools/analyze_live.py --all           # logs/trace 전부
 """
 import argparse
 import json
+import os
 import re
 import statistics
 import sys
@@ -16,8 +17,9 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TRACE = ROOT / "logs" / "trace"
-OUT = ROOT / "logs" / "analysis"
+LOGS = Path(os.environ["WATT_HOME"]) / "logs" if os.environ.get("WATT_HOME") else ROOT / "logs"  # 진단 기록(fetch_diag)도
+TRACE = LOGS / "trace"
+OUT = LOGS / "analysis"
 HANGUL = re.compile(r"[가-힣]")
 LATIN_WORD = re.compile(r"[A-Za-z]{4,}")
 # 번역에 남아도 괜찮은 영어(게임 약어·고유명사로 흔히 그대로 쓰는 것)
