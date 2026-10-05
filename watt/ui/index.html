@@ -195,6 +195,8 @@
         <h2><svg class="ic bronze"><use href="#i-chip"/></svg>AI 엔진</h2>
         <div class="field"><span>모델</span><label class="select mono"><select id="set-model"></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field" data-tip="첫 번역이 기다리지 않게 모델을 미리 올려 둡니다"><span>미리 올리기</span><button class="switch" id="set-preload" role="switch" aria-label="미리 올리기"></button></div>
+        <div class="field" data-tip="번역이 없으면 이 시간 뒤 모델을 내려 메모리를 비웁니다 — 다음 번역 때 다시 올리며 잠깐 CPU · GPU 를 많이 씁니다"><span>자동 내리기</span>
+          <label class="select"><select id="set-autounload" aria-label="자동 내리기"><option value="0">끄기</option><option value="5">5분</option><option value="10">10분</option><option value="30">30분</option><option value="60">1시간</option></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field"><span>AI 실행기</span><label class="select"><select id="set-runner" aria-label="AI 실행기">
           <option value="system">PC 의 Ollama</option><option value="watt">WATT 전용</option></select><svg class="ic sm"><use href="#i-chev"/></svg></label></div>
         <div class="field" data-tip="자동: VRAM 이 모자라면 CPU 로"><span>실행 장치 <small class="muted mono" id="device-now"></small></span>

@@ -551,7 +551,7 @@ function renderSettings() {
   sel.innerHTML = names.map((n) => `<option ${n === c.model ? 'selected' : ''}>${esc(n)}</option>`).join('');
   setSwitch('#set-update', c.update_check);
   call('get_storage').then((u) => { $('#set-usage').textContent = mb(u.total); $('#set-usage').dataset.tip = `화면 캡처 ${mb(u.frames)} · 추적 ${mb(u.trace)} · 번역 기록 ${mb(u.logs)} · 받은 파일 ${mb(u.downloads)}`; }).catch(() => {});
-  setSwitch('#set-preload', c.preload); setSwitch('#set-orig', c.show_original); setSwitch('#set-korean', c.show_korean !== false); setSwitch('#set-logs', c.keep_logs);
+  setSwitch('#set-preload', c.preload); $('#set-autounload').value = String(c.auto_unload_min || 0); setSwitch('#set-orig', c.show_original); setSwitch('#set-korean', c.show_korean !== false); setSwitch('#set-logs', c.keep_logs);
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
   $('#set-alpha').value = Math.round(c.overlay_alpha * 100); $('#out-alpha').textContent = Math.round(c.overlay_alpha * 100) + '%';
   $('#set-lines').value = c.overlay_lines; $('#out-lines').textContent = c.overlay_lines;
@@ -962,6 +962,7 @@ function bind() {
   $('#set-ads').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ ad_filter: b.dataset.v }); renderSettings(); } };
   $('#set-mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { save({ out_mode: b.dataset.v }); renderSettings(); } };
   $('#set-model').onchange = (e) => save({ model: e.target.value });
+  $('#set-autounload').onchange = (e) => { save({ auto_unload_min: +e.target.value }, true); toast('다음 번역부터 적용', 'ok'); };
   $('#set-preload').onclick = () => { save({ preload: !S.state.settings.preload }); renderSettings(); };
   $('#set-orig').onclick = () => { save({ show_original: !S.state.settings.show_original }); renderSettings(); };
   $('#set-ai').onclick = async (e) => {
@@ -1066,7 +1067,7 @@ function bind() {
 let mockTerms = null;
 function mockApi() {
   const settings = { model: 'gemma4:12b', out_lang: 'en', out_mode: 'clipboard', overlay_font: 11, overlay_alpha: 0.88, overlay_lines: 10,
-    show_original: false, show_korean: true, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
+    show_original: false, show_korean: true, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, auto_unload_min: 0, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
   const running = { live: true, input: true };
   const feed = [
     { t: '2026-10-01T00:05:46', lang: 'zh', name: '青山', body: '20LR 求组 AH', ko: '20레벨 사냥꾼, 통곡의 동굴 파티 찾음' },

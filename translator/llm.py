@@ -60,7 +60,20 @@ def think_for(model: str):
     return "low" if model.startswith("gpt-oss") else False
 
 
-def chat_json(model: str, system: str, user: str, schema: dict, keep_alive: str = "30m", num_ctx: int = NUM_CTX) -> tuple[dict, float]:
+def keep_alive_setting():
+    """모델을 올려 둘 시간(Ollama keep_alive) — 설정의 '자동 내리기'. 끄면(0) WATT 를 끌 때까지(-1, 닫을 때 runner.stop 이 내린다).
+    예전엔 30분 고정이라 한동안 번역이 없으면 내려갔다가, 다음 번역에서 다시 올리며 CPU 가 몇 초 100% 였다(PC방 2026-10-05, #129)."""
+    from watt import settings
+    try:
+        m = int(settings.load().get("auto_unload_min") or 0)
+    except (TypeError, ValueError):
+        m = 0
+    return f"{m}m" if m > 0 else -1
+
+
+def chat_json(model: str, system: str, user: str, schema: dict, keep_alive=None, num_ctx: int = NUM_CTX) -> tuple[dict, float]:
+    if keep_alive is None:
+        keep_alive = keep_alive_setting()
     body = {"model": model, "stream": False, "think": think_for(model), "format": schema, "keep_alive": keep_alive,
             "options": options(num_ctx),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
@@ -100,8 +113,10 @@ def unload(model: str) -> bool:
         return False
 
 
-def preload(model: str, keep_alive: str = "30m") -> None:
+def preload(model: str, keep_alive=None) -> None:
     """첫 번역이 모델 올리기(수 초)를 기다리지 않게 미리 올린다."""
+    if keep_alive is None:
+        keep_alive = keep_alive_setting()
     # 번역과 같은 옵션으로 — 문맥 길이 · 장치가 다르면 첫 번역에서 다시 올려 미리 올린 보람이 없다
     req = urllib.request.Request(URL + "/api/generate", data=json.dumps({"model": model, "keep_alive": keep_alive,
                                                                          "options": options()}).encode(),

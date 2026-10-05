@@ -34,6 +34,7 @@ DEFAULTS = {
     "setup_done": False,
     "keep_logs": True,           # 분석용 추적 기록·화면 저장
     "preload": True,             # 켤 때 모델을 GPU 에 미리 올리기
+    "auto_unload_min": 0,        # 번역을 이만큼(분) 안 하면 모델 내리기 — 0 이면 WATT 를 끌 때까지 올려 둔다
     "input_on": True,            # 런처를 켜면 보내기 입력창도 켜기
     "welcomed": False,           # 첫 실행 화면을 지났나
     "onboarded": False,          # 홈 도움말(말풍선)을 봤나

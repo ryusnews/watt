@@ -450,7 +450,7 @@ def model_warm(name: str) -> float:
     """모델을 GPU 에 올려 둔다(첫 번역이 기다리지 않게). 걸린 초."""
     t0 = time.monotonic()
     from translator import llm
-    req = urllib.request.Request(OLLAMA_URL + "/api/generate", data=json.dumps({"model": name, "keep_alive": "30m",
+    req = urllib.request.Request(OLLAMA_URL + "/api/generate", data=json.dumps({"model": name, "keep_alive": llm.keep_alive_setting(),
                                                                                 "options": llm.options()}).encode(),
                                  headers={"Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=300).read()
