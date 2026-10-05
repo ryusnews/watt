@@ -26,6 +26,7 @@ DEFAULTS = {
     "hotkey_input": "Ctrl+Shift+K",
     "game_dir": "",              # 고른 게임 폴더(예: ...\\World of Warcraft\\_classic_) — 애드온을 넣을 곳
     "llm_device": "auto",        # 번역 모델을 돌릴 곳: auto(VRAM 이 모자라면 CPU) · gpu · cpu
+    "llm_cpu_share": 25,         # CPU 로 번역할 때 쓸 스레드 몫(%) — 기본 1/4 은 와우 몫을 남긴다
     "runner_mode": "",           # AI 실행기: system(PC 의 Ollama) · watt(WATT 전용) · 비면 PC 에 있으면 system
     "models_dir": "",            # 번역 모델을 둘 폴더(비면 WATT 데이터 폴더 models) — 고르면 그 아래 WATT-models
     "game_exe": "",              # 고른 게임 창의 실행 파일(비면 WoW 창 중 가장 큰 것) — PC방 등 이름이 다를 때

@@ -33,8 +33,18 @@ def device_options() -> dict:
             cpu = system.vram_plan().get("short", 0) > 0
         except Exception:
             cpu = False
-    _dev.update(t=time.monotonic(), opts={"num_gpu": 0, "num_thread": max(2, (os.cpu_count() or 8) // 4)} if cpu else {})
+    _dev.update(t=time.monotonic(), opts={"num_gpu": 0, "num_thread": cpu_threads(settings.load().get("llm_cpu_share"))} if cpu else {})
     return _dev["opts"]
+
+
+def cpu_threads(share=None) -> int:
+    """CPU 로 번역할 때 스레드 수 — 설정의 몫(%, 기본 25 = 1/4). PC방 CPU(20% 사용 중)는 남는 몫이 커서 늘릴 수 있게(#126)."""
+    try:
+        share = float(share)
+    except (TypeError, ValueError):
+        share = 25.0
+    share = min(100.0, max(5.0, share))
+    return max(2, round((os.cpu_count() or 8) * share / 100))
 
 
 def reset_device() -> None:

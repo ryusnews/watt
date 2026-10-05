@@ -98,7 +98,7 @@ def system_info() -> dict:
     build = int(platform.version().split(".")[-1]) if platform.version().count(".") >= 2 else 0
     return {"windows": f"Windows {'11' if build >= 22000 else '10'} (빌드 {build})", "build": build,
             "ram_gb": round(m.ullTotalPhys / 1024 ** 3), "gpus": gl, "gpu": best,
-            "cpu": platform.processor() or os.environ.get("PROCESSOR_IDENTIFIER", ""),
+            "cpu": platform.processor() or os.environ.get("PROCESSOR_IDENTIFIER", ""), "threads": os.cpu_count() or 0,
             "free_disk_gb": round(shutil.disk_usage(os.environ.get("USERPROFILE", "C:\\")).free / 1024 ** 3)}
 
 

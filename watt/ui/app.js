@@ -506,6 +506,14 @@ function renderDevice() {
   el.value = S.state.settings.llm_device || 'auto';
   const v = S.state.vram;
   $('#device-now').textContent = v ? (v.device === 'cpu' ? 'CPU' : '그래픽 카드') : '';
+  $('#cpu-share-field').hidden = !(v && v.device === 'cpu');
+  const share = S.state.settings.llm_cpu_share || 25;
+  if (document.activeElement !== $('#set-cpu')) $('#set-cpu').value = share;
+  cpuLabel(share);
+}
+function cpuLabel(share) {
+  const n = (S.state.system && S.state.system.threads) || 0;
+  $('#out-cpu').textContent = `${share}%` + (n ? ` · ${Math.max(2, Math.round(n * share / 100))}/${n}` : '');
 }
 function renderLoaded() {
   renderDevice();
@@ -975,6 +983,8 @@ function bind() {
   $('#set-font').oninput = (e) => { $('#out-font').textContent = e.target.value; save({ overlay_font: +e.target.value }, true); };
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
+  $('#set-cpu').oninput = (e) => cpuLabel(+e.target.value);
+  $('#set-cpu').onchange = (e) => { save({ llm_cpu_share: +e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); };
   $('#set-device').onchange = (e) => { save({ llm_device: e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); setTimeout(() => refresh(true), 800); };
   $('#set-unload').onclick = unloadModels;
   $('#set-runner').onchange = async (e) => {
@@ -1070,7 +1080,7 @@ function mockApi() {
   ];
   const state = () => ({
     app: { version: '0.1.0', full: 'WoW AI Translation Tool' }, settings,
-    system: { windows: 'Windows 11 (빌드 26200)', ram_gb: 31, gpu: { name: 'NVIDIA GeForce RTX 5080', vram_gb: 15.9 }, free_disk_gb: 764 },
+    system: { windows: 'Windows 11 (빌드 26200)', ram_gb: 31, threads: 16, gpu: { name: 'NVIDIA GeForce RTX 5080', vram_gb: 15.9 }, free_disk_gb: 764 },
     ocr: { langs: [{ code: 'en-US', label: '영어', installed: true }, { code: 'ko', label: '한국어', installed: true }, { code: 'zh-Hans-CN', label: '중국어(간체)', installed: true }, { code: 'ru-RU', label: '러시아어', installed: true }], missing: [] },
     ollama: { mode: 'system', chosen: '', installed: true, running: true, version: '0.34.4', models: [{ name: 'gemma4:12b' }, { name: 'qwen3:14b' }], loaded: [{ name: 'gemma4:12b', vram_gb: 8.1 }],
       watt: false, watt_ready: false, download: 1461196158, system: { exe: 'C:\Ollama\ollama.exe', version: '0.34.4' } },
