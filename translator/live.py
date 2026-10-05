@@ -1379,6 +1379,11 @@ class Live:
         맨 앞으로 되돌려, 아래 한 건씩 도는 길이 캐시에서 바로 내보낸다. 실패하면 아무것도 하지 않는다(한 건씩)."""
         if self.jobs.qsize() < 1:
             return
+        from . import llm
+        if llm.device_options().get("num_gpu") == 0:
+            # CPU 로 번역하면 묶음이 오히려 느리다 — 글자 쓰기가 대부분이라 묶어도 덜 들고, 다 끝나야 첫 번역이 보인다
+            # (집 PC CPU 6스레드 E4B: 3건 묶음 6.1초 > 한 건씩 약 5초, PC방 14400F 에서 14.9초 — #131)
+            return
         picked = [first]
         rest = []
         while len(picked) < incoming.BATCH_MAX:

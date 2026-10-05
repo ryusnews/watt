@@ -204,9 +204,10 @@ def translate_batch(items: list[tuple[str, bool]], model: str | None = None) -> 
     terms: dict = {}
     for _, tm in prepped:
         terms.update(tm)
-    system = system_prompt(terms, joined, any(c for _, c in items)).replace(
-        "You translate one World of Warcraft Classic chat message", "You translate each World of Warcraft Classic chat message in a numbered list")
-    system += (" The user gives a JSON list of separate messages from different players. Translate EACH one on its own — "
+    # 앞부분은 한 건 번역과 똑같이 두고 묶음 안내는 끝에 붙인다 — 첫 문장을 바꾸면 Ollama 의 프롬프트 캐시가 통째로 깨져
+    # 규칙 약 740토큰을 매번 다시 읽었다(CPU 6스레드 E4B: 3건 묶음 7.2초 > 한 건씩 3번 5.4초, PC방 14.9초 — #131)
+    system = system_prompt(terms, joined, any(c for _, c in items))
+    system += (" This time the user gives a JSON list of separate messages from different players. Translate EACH one on its own — "
                "never merge, reorder or carry words between them. Return 'items' with one entry per message: i (its number), "
                "ko, src.")
     user = json.dumps([{"i": n, "text": t} for n, (t, _) in enumerate(prepped)], ensure_ascii=False)
