@@ -90,7 +90,9 @@ def usage() -> dict:
              "webview": paths.WEBVIEW}
     out = {k: size_of(v) for k, v in parts.items()}
     out["logs"] = sum(f.stat().st_size for f in paths.LOGS.glob("*") if f.is_file()) if paths.LOGS.exists() else 0
-    out["total"] = size_of(paths.DATA) if paths.DATA != paths.RES else sum(out.values())
+    # '사용 중' = 지우기로 비울 수 있는 것만 — 예전엔 데이터 폴더 전체(받은 번역 모델 · 실행기 · AI 글자 인식)를 더해
+    # 포터블에서 기록이 8.0GB 로 보였다(PC방 2026-10-05, #127). 모델은 번역 설정 → 모델 위치에 따로 보인다
+    out["total"] = out["frames"] + out["trace"] + out["downloads"] + out["logs"]
     return out
 
 

@@ -550,7 +550,7 @@ function renderSettings() {
   if (!names.includes(c.model)) names.unshift(c.model);
   sel.innerHTML = names.map((n) => `<option ${n === c.model ? 'selected' : ''}>${esc(n)}</option>`).join('');
   setSwitch('#set-update', c.update_check);
-  call('get_storage').then((u) => { $('#set-usage').textContent = mb(u.total); $('#set-usage').dataset.tip = `화면 캡처 ${mb(u.frames)} · 추적 ${mb(u.trace)} · 받은 파일 ${mb(u.downloads)}`; }).catch(() => {});
+  call('get_storage').then((u) => { $('#set-usage').textContent = mb(u.total); $('#set-usage').dataset.tip = `화면 캡처 ${mb(u.frames)} · 추적 ${mb(u.trace)} · 번역 기록 ${mb(u.logs)} · 받은 파일 ${mb(u.downloads)}`; }).catch(() => {});
   setSwitch('#set-preload', c.preload); setSwitch('#set-orig', c.show_original); setSwitch('#set-korean', c.show_korean !== false); setSwitch('#set-logs', c.keep_logs);
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
   $('#set-alpha').value = Math.round(c.overlay_alpha * 100); $('#out-alpha').textContent = Math.round(c.overlay_alpha * 100) + '%';
