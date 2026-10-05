@@ -599,7 +599,7 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
     return msgs
 
 
-def _outside_links(rows: list[dict]) -> Counter:
+def _letters_outside_links(rows: list[dict]) -> Counter:
     """줄마다 [ ] 밖 글자 수 — 링크가 다음 줄로 넘어가도([塞 / 克隆尼亚]) 이어서 본다."""
     out, inside = Counter(), False
     for r in rows:
@@ -621,7 +621,7 @@ def settle_language(m: dict) -> None:
     weight = Counter()
     for r in m["rows"]:
         weight[r["lang"]] += len(r["text"])
-    outside = _outside_links(m["rows"])
+    outside = _letters_outside_links(m["rows"])
     if sum(outside.values()):  # [링크] · [채널] [이름] 밖의 글자로 — 영어 문장 끝 중국어 퀘스트 링크 하나로 zh 가 되던 것(#115)
         weight = outside
     foreign = [(w, lang) for lang, w in weight.items() if lang in ("ru", "zh") and w]
