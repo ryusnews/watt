@@ -984,8 +984,8 @@ function bind() {
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
   $('#set-cpu').oninput = (e) => cpuLabel(+e.target.value);
-  $('#set-cpu').onchange = (e) => { save({ llm_cpu_share: +e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); };
-  $('#set-device').onchange = (e) => { save({ llm_device: e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); setTimeout(() => refresh(true), 800); };
+  $('#set-cpu').onchange = (e) => { save({ llm_cpu_share: +e.target.value }, true); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); };
+  $('#set-device').onchange = (e) => { save({ llm_device: e.target.value }, true); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); setTimeout(() => refresh(true), 800); };
   $('#set-unload').onclick = unloadModels;
   $('#set-runner').onchange = async (e) => {
     const o = S.state.ollama, v = e.target.value;
