@@ -68,8 +68,22 @@ def system_prompt(lang: str, lang_name: str, terms: dict) -> str:
     return s
 
 
+# 초성 채팅 → 말로 풀어 넘긴다. 모델에 맡기면 대부분 맞히지만 ㅈㅅ(죄송) → 出售(팝니다), ㄱㄷ(기다려) → brb 처럼 틀렸다(#134)
+CHOSUNG = {"ㅎㅇ": "하이", "ㅎㅇㅇ": "하이요", "ㅊㅋ": "축하해요", "ㅊㅋㅊㅋ": "축하축하", "ㅈㅈ": "GG", "ㅈㅈㅇ": "GG요",
+           "ㄳ": "감사", "ㄱㅅ": "감사", "ㄱㅅㄱㅅ": "감사감사", "ㅅㄱ": "수고하셨어요", "ㅅㄱㅇ": "수고하셨어요", "ㅇㅋ": "오케이",
+           "ㄱㄱ": "고고", "ㄱㄱㄱ": "고고고", "ㄴㄴ": "아니요", "ㅇㅇ": "응", "ㅈㅅ": "죄송해요", "ㅃㅇ": "바이", "ㅂㅂ": "바이바이",
+           "ㄱㄷ": "기다려 주세요", "ㅁㄹ": "몰라요", "ㄹㅇ": "진짜", "ㅇㄷ": "어디예요", "ㅇㅈ": "인정", "ㄷㄷ": "와 대박",
+           "ㄷㄷㄷ": "와 대박", "ㄱㅊ": "괜찮아요", "ㅎㅎ": "헤헤", "ㅇㄴ": "아니"}
+CHOSUNG_TOKEN = re.compile(r"(?<![ㄱ-ㅣ가-힣])[ㄱ-ㅎ]{2,4}(?![ㄱ-ㅣ가-힣])")
+
+
+def expand_chosung(text: str) -> str:
+    return CHOSUNG_TOKEN.sub(lambda m: CHOSUNG.get(m.group(0), m.group(0)), text)
+
+
 def translate(text: str, lang: str = "en", model: str = MODEL, log: bool = True) -> tuple[str, float]:
     lang_name = next(n for c, _, n in LANGS if c == lang)
+    src, text = text, expand_chosung(text)
     out, secs = chat_json(model, system_prompt(lang, lang_name, terms_for(text, lang)), text, SCHEMA)
     result = out.get("text", "").strip().strip('"').replace("\n", " ")[:MAX_LEN]
     if HANGUL.search(result):  # 한글이 남았다(번체: 通곡) — 한 번 더, 남은 말을 짚어서
@@ -83,7 +97,7 @@ def translate(text: str, lang: str = "en", model: str = MODEL, log: bool = True)
         return result, secs
     HISTORY.parent.mkdir(exist_ok=True)
     with HISTORY.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ko": text, "to": lang, "out": result,
+        f.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "ko": src, "to": lang, "out": result,
                             "sec": round(secs, 2), "model": model}, ensure_ascii=False) + "\n")
     return result, secs
 
