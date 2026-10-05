@@ -178,6 +178,11 @@ def _get(path: str, timeout: float = 1.5):
         return json.load(r)
 
 
+# 실행기(와 그것이 띄우는 모델 프로세스 — 낮은 우선순위는 물려받는다)를 '보통 아래' 로. 모델을 올리거나 CPU 로 번역할 때
+# CPU 가 100% 가 되어도 Windows 가 와우에 먼저 준다 — 번역이 조금 늦을 뿐 게임은 끊기지 않게(PC방 i5-14400F, #130)
+BELOW_NORMAL = 0x00004000
+
+
 def _port_open(timeout: float = 0.25) -> bool:
     """실행기 포트가 열려 있나 — Windows 는 아무도 안 듣는 포트에 연결하면 거절을 바로 주지 않고 시간 초과까지 기다려
     (1.5초) 실행기가 꺼져 있으면 런처 get_state 가 3초씩 걸렸다(PC방 2026-10-05, #125). 켜져 있으면 연결은 바로 된다."""
@@ -246,7 +251,7 @@ def start(wait: float = 45) -> bool:
         log = (paths.LOGS / "ollama.log").open("ab")
         try:
             p = subprocess.Popen([str(EXE), "serve"], env=env, cwd=str(DIR), stdout=log, stderr=log, stdin=subprocess.DEVNULL,
-                                 creationflags=NO_WINDOW | 0x00000200, close_fds=True)  # CREATE_NEW_PROCESS_GROUP
+                                 creationflags=NO_WINDOW | 0x00000200 | BELOW_NORMAL, close_fds=True)  # CREATE_NEW_PROCESS_GROUP
         except OSError as e:  # 실행이 막힘(PC방 보안 프로그램 · 실행 제한 정책 등)
             last_error = f"실행할 수 없습니다: {e}"
             return False
