@@ -208,6 +208,11 @@ def outgoing(text: str, lang: str) -> dict[str, str]:
     return {s: target_name(t, lang) for s, t in _find(text, _OUT_PAIRS)[:MAX_HINTS]}
 
 
+def place_names() -> set[str]:
+    """던전 · 공격대 · 날개의 한국어 이름 — 번역에 원문에 없는 던전이 들어갔는지 볼 때(#137)."""
+    return {t["ko"] for t in TERMS if t.get("type") in ("dungeon", "raid", "wing") and t.get("ko")}
+
+
 def incoming(text: str, chinese: bool = False) -> dict[str, str]:
     """chinese: 중국 사용자 글(한자가 없어도 병음 약자 먼저)."""
     maybe_reload()

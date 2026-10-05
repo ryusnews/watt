@@ -46,7 +46,8 @@ TIMEZONE = re.compile(r"(?i)(?:\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b(?:morning|no
                       r"(?:pst|pdt|pt|est|edt|et|cst|cdt|mst|mdt|cet|cest|gmt|utc|bst)\b")
 TIME_RULES = ("Here PST/PDT/EST/CST/CET/GMT after a time are time zones (PST = 미국 태평양 시간, EST = 미국 동부 시간, "
               "CET = 중앙유럽 시간), not 'please send tell'; am/pm are 오전/오후.")
-CHINESE_RULES = ("Chinese LFG ads shorten dungeons (怒焰 = 성난불길 협곡) and even to pinyin initials "
+# 던전 예를 하나(怒焰 = 성난불길 협곡) 들었더니 작은 모델이 중국어 던전을 거의 다 '성난불길 협곡'으로 옮겼다 — 이름은 사전 힌트로만(#137)
+CHINESE_RULES = ("Chinese LFG ads shorten dungeon names and even to pinyin initials "
                  "(AH = 哀嚎 = 통곡의 동굴, never the auction house). 'N=M' counts players (哀嚎4=1 = 4명 있음 1명 더 구함; "
                  "'=3' = 3명 더 구함). 任意 = any class, 缺 = need, 来/组人 = recruiting, 求组 = wants to JOIN a group, "
                  "奶 or N = healer, T = tank, 近战 = 근접 딜러, 远程 = 원거리 딜러, 速刷 = 빠르게 도는, 开搞 = 출발, 带 = 버스. "
@@ -138,6 +139,14 @@ def fix_terms(out: str, hints: dict) -> str:
             if sum(a != b for a, b in zip(seg, core)) == 1 and seg[0] == core[0]:
                 out = out[:i] + core + out[i + n:]
                 break
+    # 알려 준 던전이 빠지고 다른 던전이 들어갔으면 바꾼다 — 작은 모델(E2B)이 哀嚎 = 통곡의 동굴을 알려 줘도 '성난불길 협곡'으로
+    # 옮겼다(PC방 2026-10-05, #137). 알려 준 던전이 하나 · 들어간 엉뚱한 던전이 하나일 때만
+    places = terms.place_names()
+    want = {v.split("(")[0].strip() for v in hints.values()} & places
+    missing = [p for p in want if p not in out]
+    wrong = [p for p in places - want if p in out]
+    if len(missing) == 1 and len(wrong) == 1:
+        out = out.replace(wrong[0], missing[0])
     return out
 
 
