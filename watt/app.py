@@ -573,6 +573,19 @@ class Api:
         return housekeeping.usage()
 
     @_logged
+    def diag_preview(self) -> dict:
+        """진단 기록 보내기(#135) — 보내기 전에 무엇을 보내는지."""
+        from . import diag
+        return diag.preview()
+
+    @_logged
+    def send_diag(self) -> dict:
+        from . import diag
+        res = diag.send()
+        log.info("diag %s", res)
+        return res
+
+    @_logged
     def clear_logs(self) -> dict:
         return housekeeping.clear()
 

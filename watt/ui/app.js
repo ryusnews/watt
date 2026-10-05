@@ -1008,6 +1008,16 @@ function bind() {
   $('#set-update').onclick = () => { save({ update_check: !S.state.settings.update_check }); renderSettings(); };
   $('#btn-update').onclick = () => applyUpdate();
   $('#btn-check-update').onclick = () => checkUpdate(true);
+  $('#btn-diag').onclick = async () => {
+    const b = $('#btn-diag'), p = await call('diag_preview');
+    if (!p) return;
+    const what = [p.has_live ? '번역 기록' : '', p.trace ? `추적 기록 ${p.trace}일` : '', p.frames ? `화면 캡처 ${p.frames}장` : '', '실행 로그 · 설정'].filter(Boolean);
+    if (!(await confirmBox('진단 기록 보내기', `${what.join(' · ')} (약 ${mb(p.size)}) — 다른 플레이어 이름과 채팅이 들어 있습니다. WATT 서버에 14일 두고 지웁니다`, '보내기', '취소', false))) return;
+    b.disabled = true; toast('보내는 중…');
+    const r = await call('send_diag');
+    b.disabled = false;
+    toast(r && r.ok ? `보냈습니다 — 번호 ${r.id}` : (r && r.error) || '보내지 못했습니다', r && r.ok ? 'ok' : 'err');
+  };
   $('#btn-cleanup').onclick = async () => {
     const w = (S.state && S.state.watt_installed) || {};
     const parts = [w.models && w.models.length ? `모델 ${w.models.length}` : '', w.ocr && w.ocr.length ? `언어 팩 ${w.ocr.length}` : '',
@@ -1119,6 +1129,7 @@ function mockApi() {
     get_shot: () => ok({ img: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#2b3240"/><rect x="10" y="560" width="520" height="260" fill="#000" opacity=".6"/></svg>'), w: 1600, h: 900, found: { x: 10, y: 560, w: 520, h: 260 }, report: { can: true, wait_h: 0 } }),
     set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
+    diag_preview: () => ok({ size: 14.2 * 1024 ** 2, frames: 80, trace: 2, has_live: true }), send_diag: () => ok({ ok: true, id: '3fa9c1e07b2d', size: 9.8 * 1024 ** 2 }),
     list_windows: () => ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],
       others: [{ exe: 'chrome.exe', title: 'Chrome', w: 1200, h: 900 }], picked: settings.game_exe || '', current: 'WowB.exe' }),
     pick_window: (exe) => { settings.game_exe = exe; return ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],

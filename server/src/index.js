@@ -1,6 +1,7 @@
 // WATT 받는 서버 (Cloudflare Worker)
 //   POST /v1/terms            사전 후보(#7) — 동의한 설치만, 하루 1번
 //   POST /v1/report           인식 오류 신고(#14) — 이미지 + 영역 정보, 설치마다 24시간에 1번
+//   POST /v1/diag             진단 기록(#135) — 사용자가 정보 → '진단 기록 보내기'를 눌렀을 때만. zip 그대로 R2(14일 뒤 지움)
 //   GET  /v1/health
 //   GET  /v1/releases         업데이트 확인 — GitHub 릴리스 목록을 5분 캐시해 넘긴다. WATT 가 GitHub API 를 직접 부르면
 //                             IP 당 시간 60번 제한에 PC방(공인 IP 하나를 여럿이 씀)에서 걸렸다(#123). 아무것도 저장하지 않는다
@@ -20,6 +21,7 @@ export default {
       if (path === '/v1/releases' && request.method === 'GET') return await releases();
       if (path === '/v1/terms' && request.method === 'POST') return await terms(request, env);
       if (path === '/v1/report' && request.method === 'POST') return await report(request, env);
+      if (path === '/v1/diag' && request.method === 'POST') return await diag(request, env);
       if (path.startsWith('/v1/admin/')) {
         if (!(await isAdmin(request, env))) return json({ error: 'unauthorized' }, 401);
         return await admin(request, env, path.slice('/v1/admin/'.length), url);
@@ -35,6 +37,33 @@ export default {
     await cleanup(env);
   },
 };
+
+// ---- 진단 기록(#135) — 번역 기록 · 추적 · 화면 캡처 · 실행 로그 묶음(zip). 다른 플레이어 채팅이 들어 있어 짧게 둔다
+async function diag(request, env) {
+  const max = +env.DIAG_MAX_BYTES;
+  if (+(request.headers.get('content-length') || 0) > max) return json({ error: 'too large' }, 413);
+  const installRaw = request.headers.get('x-watt-install') || '';
+  if (!INSTALL.test(installRaw)) return json({ error: 'bad install' }, 400);
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.length > max) return json({ error: 'too large' }, 413);
+  if (!(bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04)) {
+    return json({ error: 'not a zip' }, 415);
+  }
+  const install = await hashed(env, 'i:' + installRaw);
+  const ip = await hashed(env, 'ip:' + (request.headers.get('cf-connecting-ip') || ''));
+  if (!(await bump(env, 'd:i:' + install, +env.DIAG_INSTALL_DAY))) return json({ error: 'limit', retry: 'tomorrow' }, 429);
+  if (!(await bump(env, 'd:ip:' + ip, +env.DIAG_IP_DAY))) return json({ error: 'limit', retry: 'tomorrow' }, 429);
+  if (!(await bump(env, 'd:all', +env.DIAG_ALL_DAY))) return json({ error: 'busy' }, 503);
+
+  const id = (await sha256(bytes)).slice(0, 12);
+  const d = today();
+  const key = `diag/${d}/${id}.zip`;
+  await env.REPORTS.put(key, bytes, { httpMetadata: { contentType: 'application/zip' } });
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO diags (id, at, day, install, ver, r2key, size) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, Date.now(), d, install, (request.headers.get('x-watt-ver') || '').slice(0, 16), key, bytes.length).run();
+  return json({ ok: true, id }, 201);
+}
 
 // ---- 업데이트 확인(#123)
 const RELEASES = 'https://api.github.com/repos/ryusnews/watt/releases?per_page=30';
@@ -207,6 +236,30 @@ async function admin(request, env, path, url) {
       return json({ ok: true });
     }
   }
+  if (parts[0] === 'diags') {
+    if (parts.length === 1 && request.method === 'GET') {
+      const rows = await env.DB.prepare('SELECT id, at, day, ver, size, status FROM diags ORDER BY at DESC LIMIT 100').all();
+      return json(rows.results);
+    }
+    const row = await env.DB.prepare('SELECT * FROM diags WHERE id = ?').bind(parts[1] || '').first();
+    if (!row) return json({ error: 'not found' }, 404);
+    if (parts[2] === 'zip' && request.method === 'GET') {
+      const obj = await env.REPORTS.get(row.r2key);
+      if (!obj) return json({ error: 'gone' }, 410);
+      return new Response(obj.body, { headers: { 'content-type': 'application/zip' } });
+    }
+    if (parts.length === 2 && request.method === 'POST') {
+      const { status } = await request.json();
+      if (!['new', 'seen'].includes(status)) return json({ error: 'bad status' }, 400);
+      await env.DB.prepare('UPDATE diags SET status = ? WHERE id = ?').bind(status, row.id).run();
+      return json({ ok: true });
+    }
+    if (parts.length === 2 && request.method === 'DELETE') {
+      await env.REPORTS.delete(row.r2key);
+      await env.DB.prepare('DELETE FROM diags WHERE id = ?').bind(row.id).run();
+      return json({ ok: true });
+    }
+  }
   if (path === 'terms' && request.method === 'GET') {
     const min = Math.max(1, +url.searchParams.get('min') || 2);
     const status = url.searchParams.get('status') || 'new';
@@ -240,6 +293,13 @@ async function cleanup(env) {
     if (!old.results.length) break;
     await env.REPORTS.delete(old.results.map((r) => r.r2key));
     await env.DB.batch(old.results.map((r) => env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(r.id)));
+  }
+  const diagFrom = dayOffset(-(+env.DIAG_KEEP_DAYS));
+  for (;;) {
+    const old = await env.DB.prepare('SELECT id, r2key FROM diags WHERE day < ? LIMIT 100').bind(diagFrom).all();
+    if (!old.results.length) break;
+    await env.REPORTS.delete(old.results.map((r) => r.r2key));
+    await env.DB.batch(old.results.map((r) => env.DB.prepare('DELETE FROM diags WHERE id = ?').bind(r.id)));
   }
   await env.DB.prepare('DELETE FROM quota WHERE day < ?').bind(dayOffset(-2)).run();
   await env.DB.prepare('DELETE FROM term_installs WHERE day < ?').bind(dayOffset(-90)).run();

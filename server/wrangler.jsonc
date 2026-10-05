@@ -15,7 +15,12 @@
     "TERMS_IP_DAY": "5",
     "TERMS_ALL_DAY": "20000",
     "TERMS_ITEMS_MAX": "30",
-    "KEEP_DAYS": "30"
+    "KEEP_DAYS": "30",
+    "DIAG_MAX_BYTES": "31457280", // 진단 기록(#135) 한 번 30MB
+    "DIAG_INSTALL_DAY": "5",
+    "DIAG_IP_DAY": "10",
+    "DIAG_ALL_DAY": "200",
+    "DIAG_KEEP_DAYS": "14"        // 다른 플레이어 채팅이 들어 있어 짧게
   },
   "observability": { "enabled": true }
 }

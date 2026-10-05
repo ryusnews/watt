@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE INDEX IF NOT EXISTS reports_install ON reports (install, at);
 CREATE INDEX IF NOT EXISTS reports_status ON reports (status, at);
 
+-- #135 진단 기록(zip) — R2, 14일 뒤 지움
+CREATE TABLE IF NOT EXISTS diags (
+  id TEXT PRIMARY KEY,                  -- zip SHA-256 앞 12자(사용자에게 보이는 번호)
+  at INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  install TEXT NOT NULL,                -- 설치 ID 의 SALT 해시
+  ver TEXT NOT NULL,
+  r2key TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new'    -- new · seen
+);
+CREATE INDEX IF NOT EXISTS diags_day ON diags (day);
+
 -- 하루 횟수(설치 · IP 해시 · 전체). 이틀 뒤 지움
 CREATE TABLE IF NOT EXISTS quota (
   day TEXT NOT NULL,
