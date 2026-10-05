@@ -35,7 +35,7 @@ LATIN_RULES = ("'<class or role> LFG <dungeon>' means the writer is that class/r
                "OCR misreads g as a and l as I: Ifg/lfa = lfg, Ifm = lfm, roaue = rogue, aoina = going, IVI = lvl, If = lf. "
                "'X would go hard' = X would be awesome. '/who 21' = the /who player search (21레벨 검색), not a channel. "
                "summ/sum = a summoning service (소환 서비스), never a pet. Keep slash commands as typed (/reload, /inv, /roll), "
-               "never translate them.")
+               "never translate them. French 'du monde pour X ?' = anyone for X? (X 갈 사람?), 'dispo' = available to join.")
 # 'tank LF RFC' — 역할이 LF 앞이면 그 사람이 파티를 찾는다(LFG). 모델은 LF 를 보고 '탱커 구함'으로 옮겼고, 프롬프트에 예를
 # 넣으면 거꾸로 'LF heal WC'(힐러 구함)까지 '힐러가 파티 찾음'으로 바꿨다 — 번역 전에 LFG 로 바꿔 넘긴다(2026-10-02)
 ROLE_LF = re.compile(r"(?i)^\s*(tanks?|heals?|healers?|dps|melee|ranged|warrior|warr|rogue|hunter|mage|priest|warlock|lock|"

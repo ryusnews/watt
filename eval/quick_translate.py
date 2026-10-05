@@ -36,6 +36,10 @@ EXTRA_IN = [
     {"src": "有没有刷哀嚎的", "must": [["통곡의 동굴"]], "must_not": ["성난불길"]},
     {"src": "哀嚎来T来治疗", "must": [["통곡의 동굴"], ["탱"], ["힐"]], "must_not": ["성난불길"]},
     {"src": "NY来3个DPS 16+", "must": [["성난불길 협곡"], ["딜"]]},
+    # PC방 2026-10-05 저녁 — 이름 OCR 변형 · 독일어 · 프랑스어
+    {"src": "Ifm Cholaruk", "must": [["촐라루크"], ["구함", "구해"]], "must_not": ["콜라룩"]},
+    {"src": "Suche Verzauberer für 2H Waffe", "must": [["마법부여"]], "must_not": ["마법사"]},
+    {"src": "du monde pour ragefeu ?", "must": [["성난불길 협곡"], ["사람", "분"]], "must_not": ["길?"]},
 ]
 
 

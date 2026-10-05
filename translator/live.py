@@ -81,7 +81,10 @@ def _outside_links(body: str) -> str:
 # 사람이 쓴 말이 아닌 줄 — 번역하지 않는다. PC방 기록에서 번역 249건 중 56건이 이런 줄이었다(CPU 로 한 건 4초, #138)
 SYSTEM_NAMES = {"전리품"}  # 한국어 클라이언트의 '[전리품]: [아이템]' 채널
 LOOT_HISTORY = re.compile(r"(?i)[lih|]{0,3}[li]oot\s*history")  # LootHistory 애드온 조각(HlootHistory · lHIootHistory …)
-ADDON_LINE = re.compile(r"(?i)\bloaded\b|\btype /\w+|\bhas known incompatib|^\s*RestedXP\b")  # 이름 없는 애드온 안내
+# 이름 없는 애드온 안내 — 'EllesmereUI CDM: …' · 'ForeverLibraryPins' 처럼 붙여 쓴 대문자 이름으로 시작(PC방 2026-10-05)
+ADDON_LINE = re.compile(r"(?i)\bloaded\b|\btype /\w+|\bhas known incompatib|^\s*RestedXP\b|"
+                        r"(?-i:^\s*(?:[A-Z][a-z]+){2,}[A-Z]*\b|^\s*[A-Z][a-z]+[A-Z]{2,}\b)")
+SLASH_ONLY = re.compile(r"^\s*/\w{1,16}(?:\s+\S{1,16})?\s*$")  # '/rl' · '/w 이름' — 번역할 말이 없다('/리로드'로 옮겼다)
 
 
 def link_only(body: str) -> bool:
@@ -559,7 +562,10 @@ def build_messages(rows: list[dict], line_h: int, orphans: list | None = None) -
             if orphans is not None:
                 orphans.append(r)
             continue
-        at_margin = abs(r["x"] - margin) < line_h * 0.4  # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다)
+        # 왼쪽 여백에서 시작 = 새 메시지(뒷줄은 들여쓴다). 여백보다 왼쪽에서 시작해 '[이름]:' 머리가 읽히는 줄도 — 예전엔
+        # 8px 왼쪽의 '[G] [이름]:'(한국어 엔진: '[이 [이름]:')을 들여쓴 뒷줄로 보고 앞 메시지에 이어 번역했다(PC방 2026-10-05).
+        # 머리가 없으면 그대로 — OCR 이 뒷줄 상자를 왼쪽 끝부터 잡기도 한다(정답 표본 en_001112 의 주소 뒷줄 x=11)
+        at_margin = abs(r["x"] - margin) < line_h * 0.4 or (r["x"] < margin and bool(parse_header(r["text"], True)))
         h = parse_header(r["text"], at_margin)
         body = h["body"] if h else None
         if not h and r.get("alt_header"):  # 머리는 다른 엔진 것으로, 본문은 고른 엔진 것(첫 ]: 뒤)으로
@@ -1240,6 +1246,16 @@ class Live:
         except Exception as e:
             self.events.put(("status", f"영역 찾기 실패: {e}"))
 
+    def _cjk_echo(self, m: dict) -> bool:
+        """방금 번역한 중국어 글을 줄이 올라간 다음 화면에서 한국어 엔진만 깨진 한자로 다시 읽은 것('兄弟們拍美行迭//A屳事',
+        언어 en) — 글자가 많이 달라 0.8 기준을 못 넘었다(PC방 2026-10-05, 5건). 한자 글인데 zh 가 아니고, 12초 안에 이름이
+        비슷한 사람의 zh 글이 있으면 같은 메시지로 본다. 같은 사람의 다른 중국어 글(zh)은 이 규칙에 걸리지 않는다."""
+        if m["lang"] == "zh" or len(CJK.findall(m["body"])) < 2:
+            return False
+        name, body = dkey(m["name"]), dkey(m["body"])
+        return any(x[2] == "zh" and difflib.SequenceMatcher(None, name, x[3]).ratio() >= 0.5
+                   and difflib.SequenceMatcher(None, body, x[4]).ratio() >= 0.45 for x in self.recent)
+
     FRAME_SAVE_EVERY = 3.0   # 초 — 화면 저장 간격
     FRAME_SAVE_MAX = 300     # 하루 최대 장수
 
@@ -1318,7 +1334,7 @@ class Live:
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
-            elif link_only(m["body"]):
+            elif link_only(m["body"]) or SLASH_ONLY.match(m["body"]):
                 decision = "pass_ko"  # 영어 링크만('[Deep Fathom Ring]') — 번역 없이 그대로 보인다(#138)
             elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]):
                 decision = "skip_junk"
@@ -1352,11 +1368,11 @@ class Live:
                 # 방금(12초 안) 올린 글과 거의 같으면 한 번만 — OCR 이 같은 메시지를 3줄 · 4줄(깨진 꼬리)로 번갈아 읽어
                 # 몇 초 사이 두 번 번역하고 '다시 올린 글'로도 셌다(组队交流 광고, 2026-10-01). 진짜로 다시 올린 글은 12초 뒤
                 now, bk = time.monotonic(), dkey(f"{m['name']}|{m['body']}")  # 이름까지 — 다른 사람의 같은 대답(네)은 따로
-                self.recent = [(t_, k_) for t_, k_ in getattr(self, "recent", []) if now - t_ < 12]
-                if any(difflib.SequenceMatcher(None, bk, k_).ratio() >= 0.8 for _, k_ in self.recent):
+                self.recent = [x for x in getattr(self, "recent", []) if now - x[0] < 12]
+                if any(difflib.SequenceMatcher(None, bk, x[1]).ratio() >= 0.8 for x in self.recent) or self._cjk_echo(m):
                     decision = "dup_recent"
                 else:
-                    self.recent.append((now, bk))
+                    self.recent.append((now, bk, m["lang"], dkey(m["name"]), dkey(m["body"])))
             if decision in ("queued", "skip_first"):  # 켰을 때 보이던 줄도 되풀이 세기에는 넣는다
                 ad = self.ads.check(m["name"], m["body"])
                 if m["name"] in self.cfg.get("ad_allow", []) and ad["kind"] == "ad":

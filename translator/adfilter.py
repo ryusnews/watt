@@ -25,7 +25,7 @@ SITE = re.compile(r"\b[\w-]{2,}\s?\.\s?(?:com|net|org|cn|ru|io|gg|top|xyz|shop|v
 DISCORD = re.compile(r"discord|disc\.gg|디코|디스코드", re.I)
 CONTACT = re.compile(r"(?:\b(?:v|vx|wx|q|qq|tg|wechat|telegram|whatsapp|line|kakao|vk)|微信|威信|扣扣)\s*群?\s*号?\s*[:：]\s*"
                      r"([A-Za-z0-9_\-]{5,})", re.I)
-PROMO = re.compile(r"交流群|老友群|进裙|加群|公众号|直播间|抖音|best community|лучшее сообщество|розыгрыш|giveaway|"
+PROMO = re.compile(r"交流群|老友群|进裙|加群|进群|入群|加微信|加威信|公众号|直播间|抖音|best community|лучшее сообщество|розыгрыш|giveaway|"
                    r"free (?:gold|items)|join (?:our|my) (?:group|channel)", re.I)
 PARTY = re.compile(r"\bLF\d?M\b|\bLFG\b|\bLF\b|\bLF\s?\d|looking for (?:more|tank|heal|dps|group)|need (?:tank|heal|dps)|"
                    r"来\s?[个TN奶]|求组|进组|缺\s?[TN奶]|任务队|速刷|车头|\b\d\s?=\s?\d\b|"
