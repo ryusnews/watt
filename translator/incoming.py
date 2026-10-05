@@ -101,11 +101,23 @@ OCR_FIXES = [  # 번역 전에 코드로 — 프롬프트로만 알려 주면 'I
 NUM_ROLE = re.compile(r"(?i)\b(\d{1,2})(dds?|dps|tanks?|heals?|healers?)\b")
 
 
+# 파티 인원 'N=M'(N명 있음, M명 더 구함) · '=M'(M명 더 구함) — 번역 전에 한국어로 풀어 둔다. 프롬프트로 알려 줘도 E4B 는
+# '来个奶 4=1' 을 '힐러 4명 구함 1명 더 구함'으로 옮겼다(PC방 2026-10-05, #132). '=>RFC' · '@225' · 소수점은 아님
+PARTY_COUNT = re.compile(r"(?<![0-9.=<>])(\d{1,2})\s*=\s*(\d{1,2})(?![0-9>.])")
+PARTY_NEED = re.compile(r"(?<![0-9A-Za-z.=<>])=\s*(\d{1,2})(?![0-9>.])")
+
+
+def party_counts(text: str) -> str:
+    text = PARTY_COUNT.sub(lambda m: f" ({m[1]}명 있음, {m[2]}명 더 구함) ", text)
+    text = PARTY_NEED.sub(lambda m: f" ({m[1]}명 더 구함) ", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
 def normalize_ocr(text: str) -> str:
     text = ocrfix.fix(text)  # 0 · O · o, 1 · l · I · | — 사전 · 상용어 · 숫자 자리로(#31)
     for rx, rep in OCR_FIXES:
         text = rx.sub(rep, text)
-    return NUM_ROLE.sub(r"\1 \2", text)
+    return party_counts(NUM_ROLE.sub(r"\1 \2", text))
 
 
 def fix_terms(out: str, hints: dict) -> str:
