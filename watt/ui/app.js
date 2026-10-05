@@ -348,9 +348,10 @@ const DETAIL = {
   },
   model() {
     const st = S.state, sel = S.selModel || st.settings.model, p = S.progress.pull;
+    const loaded = ((st.ollama && st.ollama.loaded) || []).map((x) => x.name);
     const cards = st.models.map((m) => {
       const tags = [m.recommended ? '<span class="badge bronze">추천</span>' : '', m.installed ? '<span class="badge ok">받음</span>' : '',
-        !m.verified ? '<span class="badge">검증 전</span>' : ''].join('');
+        !m.verified ? '<span class="badge">검증 전</span>' : '', loaded.includes(m.name) ? '<span class="badge ok" data-tip="VRAM 에 올라가 있음">올라감</span>' : ''].join('');
       const busy = (p || st.busy.includes('pull'));
       const trash = m.installed && m.watt && !busy ? `<button class="trash" data-act="delete_model" data-name="${esc(m.name)}" data-label="${esc(m.label)}" data-size="${m.download_gb}" aria-label="${esc(m.label)} 지우기" data-tip="모델 지우기">${icon('i-trash', 'sm')}</button>` : '';
       return `<div class="model ${m.name === sel ? 'sel' : ''}" role="radio" tabindex="0" aria-checked="${m.name === sel}" data-model="${esc(m.name)}">
@@ -375,7 +376,9 @@ const DETAIL = {
       : !m.installed && can ? `<span class="inline"><button class="btn" data-act="pull_model" data-tip="새로 받기">${icon('i-download', 'sm')}받기</button>
         <button class="btn primary" data-act="import_model" data-tip="PC 의 Ollama 에 이미 받은 모델 — 다시 받지 않습니다">${icon('i-folder', 'sm')}가져오기</button></span>`
       : !m.installed ? `<button class="btn primary" data-act="pull_model">${icon('i-download', 'sm')}받기</button>`
-      : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>` : '<span class="badge ok">사용 중</span>';
+      : sel !== st.settings.model ? `<button class="btn primary" data-act="use_model">사용</button>`
+      : loaded.includes(sel) ? `<span class="inline"><span class="badge ok">사용 중</span><button class="btn" data-act="unload_models" data-tip="VRAM 비우기 — 통역 중이면 통역을 끕니다">${icon('i-eject', 'sm')}내리기</button></span>`
+      : '<span class="badge ok">사용 중</span>';
     const v = st.vram;
     const vramLine = v && v.available != null ? `<div class="facts vram-facts" data-tip="지금 쓰는 VRAM ${v.used}GB / ${v.total}GB${v.wow ? ` · 와우 켜짐(약 ${v.wow_gb}GB)` : ` · 와우 꺼짐 — 켜면 약 ${v.wow_est}GB 더 씀(${v.wow_how === 'resolution' ? '해상도로 어림' : '이 PC 에서 잰 값'})`}${v.watt_loaded ? ` · 지금 올린 WATT 모델 ${v.watt_loaded}GB 포함` : ''}">
       ${icon('i-gauge', 'sm')}<span>번역 모델에 쓸 VRAM <b>${v.available}GB</b></span><span class="muted">${v.wow ? '와우 켜진 지금 기준' : '와우 몫 빼고'}</span></div>
@@ -471,6 +474,7 @@ async function act(name, d = {}) {
   if (name === 'start_ollama') return call('start_ollama');
   if (name === 'pull_model') { S.progress.pull = { model: S.selModel || st.settings.model, done: 0, total: 0, status: '준비 중' }; renderSetup(); return call('pull_model', S.selModel || st.settings.model); }
   if (name === 'cancel_pull') return call('cancel', 'pull');
+  if (name === 'unload_models') return unloadModels();
   if (name === 'use_model') { await call('use_model', S.selModel); toast('모델을 바꿨습니다', 'ok'); return refresh(true); }
   if (name === 'pick_folder') return pickFolder();
   if (name === 'install_addon') { const r = await call('install_addon', S.selGame); toast(`글꼴 애드온 ${r.version || ''} 설치됨. 게임을 다시 켜 주세요`, 'ok'); return loadGames().then(() => refresh(true)); }
@@ -509,6 +513,14 @@ function renderLoaded() {
   const names = (o.loaded || []).map((m) => m.name);
   $('#set-loaded').textContent = names.length ? names.join(', ') : '없음';
   $('#set-unload').hidden = !names.length;
+}
+// 번역 설정 · 환경 설정(번역 모델)의 '내리기' — 같은 동작
+async function unloadModels() {
+  const live = S.live && S.live.running && (S.live.running.live || S.live.running.input);
+  if (live && !(await confirmBox('모델 내리기', '통역 · 입력창을 끄고 내립니다 — 켜 두면 다음 번역에 다시 올라옵니다', '끄고 내리기', '취소', false))) return;
+  const r = await call('unload_models');
+  toast(r && r.unloaded && r.unloaded.length ? `내렸습니다: ${r.unloaded.join(', ')}` : '올라간 모델이 없습니다', 'ok');
+  refresh(true);
 }
 function renderSettings() {
   const c = S.state && S.state.settings; if (!c) return;
@@ -964,13 +976,7 @@ function bind() {
   $('#set-alpha').oninput = (e) => { $('#out-alpha').textContent = e.target.value + '%'; save({ overlay_alpha: e.target.value / 100 }, true); };
   $('#set-lines').oninput = (e) => { $('#out-lines').textContent = e.target.value; save({ overlay_lines: +e.target.value }, true); };
   $('#set-device').onchange = (e) => { save({ llm_device: e.target.value }); toast('다음 번역부터 적용 — 모델을 다시 올립니다', 'ok'); setTimeout(() => refresh(true), 800); };
-  $('#set-unload').onclick = async () => {
-    const live = S.live && S.live.running && (S.live.running.live || S.live.running.input);
-    if (live && !(await confirmBox('모델 내리기', '통역 · 입력창을 끄고 내립니다 — 켜 두면 다음 번역에 다시 올라옵니다', '끄고 내리기', '취소', false))) return;
-    const r = await call('unload_models');
-    toast(r && r.unloaded && r.unloaded.length ? `내렸습니다: ${r.unloaded.join(', ')}` : '올라간 모델이 없습니다', 'ok');
-    refresh(true);
-  };
+  $('#set-unload').onclick = unloadModels;
   $('#set-runner').onchange = async (e) => {
     const o = S.state.ollama, v = e.target.value;
     if (v === 'watt' && !o.watt_ready) { show('setup'); S.step = STEPS.findIndex((s) => s.key === 'ollama'); renderSetup(); e.target.value = o.mode; return; }
@@ -1066,7 +1072,7 @@ function mockApi() {
     app: { version: '0.1.0', full: 'WoW AI Translation Tool' }, settings,
     system: { windows: 'Windows 11 (빌드 26200)', ram_gb: 31, gpu: { name: 'NVIDIA GeForce RTX 5080', vram_gb: 15.9 }, free_disk_gb: 764 },
     ocr: { langs: [{ code: 'en-US', label: '영어', installed: true }, { code: 'ko', label: '한국어', installed: true }, { code: 'zh-Hans-CN', label: '중국어(간체)', installed: true }, { code: 'ru-RU', label: '러시아어', installed: true }], missing: [] },
-    ollama: { mode: 'system', chosen: '', installed: true, running: true, version: '0.34.4', models: [{ name: 'gemma4:12b' }, { name: 'qwen3:14b' }], loaded: [],
+    ollama: { mode: 'system', chosen: '', installed: true, running: true, version: '0.34.4', models: [{ name: 'gemma4:12b' }, { name: 'qwen3:14b' }], loaded: [{ name: 'gemma4:12b', vram_gb: 8.1 }],
       watt: false, watt_ready: false, download: 1461196158, system: { exe: 'C:\Ollama\ollama.exe', version: '0.34.4' } },
     vram: { total: 15.9, used: 5.7, wow: false, wow_est: 4, watt_loaded: 0, available: 5.4, pick: 'gemma4:e4b' },
     models: [{ name: 'gemma4:12b', label: 'Gemma 4 12B', download_gb: 7.7, vram_gb: 8.1, verified: true, installed: true, recommended: true },
