@@ -114,10 +114,15 @@ def party_counts(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+# 'BDF -1TANK -1HEAL' — 모자란 자리(탱커 1 · 힐러 1 구함). 그대로 넘기면 '-1 탱커 -1 힐러'로 옮겼다(내 PC 2026-10-06, #140)
+MINUS_ROLE = re.compile(r"(?i)(?<![\w-])-\s?(\d{1,2}|[Il|](?=\s?[A-Za-z]))\s?(dds?|dps|tanks?|heals?|healers?)\b")  # -ITANK 의 I 는 1
+
+
 def normalize_ocr(text: str) -> str:
     text = ocrfix.fix(text)  # 0 · O · o, 1 · l · I · | — 사전 · 상용어 · 숫자 자리로(#31)
     for rx, rep in OCR_FIXES:
         text = rx.sub(rep, text)
+    text = MINUS_ROLE.sub(lambda m: f"need {m[1] if m[1].isdigit() else 1} {m[2]}", text)
     return party_counts(NUM_ROLE.sub(r"\1 \2", text))
 
 

@@ -94,6 +94,22 @@ def link_only(body: str) -> bool:
             and not any(CJK.search(x) or CYRILLIC.search(x) for x in links))
 
 
+CHANNEL_NAME = re.compile(r"^\s*\d{1,2}\s*[.,]")  # '1. 공개 • 불모' — 채널 이름을 사람 이름으로 읽은 것(진짜 이름은 모른다)
+# 한국어 엔진이 아닌 엔진이 한글을 닮은 한자 · 부수로 읽은 조각: 卜(ㅏ) 匚(ㄷ) 彐(ㅋ) 凵 巳 丨 + 'LI' · 'L |'(니) —
+# '17 明 S 合 LI 匚卜，'(…합니다) · '闷 7d 里叫彐彐'(ㅋㅋ) · 이름 '匚 H 人卜昌'(내 PC 2026-10-06, #140)
+HANZI_JAMO = re.compile(r"[卜匚彐凵巳丨鬯吲叱岂矧旨暑]|(?<![A-Za-z])L\s?[I|](?![A-Za-z])")  # 기록 셋의 진짜 중국어에는 2개↑ 없음
+
+
+def korean_name(name: str) -> bool:
+    """한글 이름(한글 2자↑ · 글자의 절반↑, 채널 이름 꼴은 아님)."""
+    h = len(HANGUL.findall(name))
+    return h >= 2 and h * 2 >= len(re.findall(r"\w", name)) and not CHANNEL_NAME.match(name)
+
+
+def hangul_as_hanzi(text: str) -> bool:
+    return len(HANZI_JAMO.findall(text)) >= 2
+
+
 def korean_body(body: str) -> bool:
     """링크를 빼고 한글이 4자 이상이고 라틴보다 많다 — 한국어 글."""
     s = _outside_links(body)
@@ -1253,8 +1269,10 @@ class Live:
         if m["lang"] == "zh" or len(CJK.findall(m["body"])) < 2:
             return False
         name, body = dkey(m["name"]), dkey(m["body"])
-        return any(x[2] == "zh" and difflib.SequenceMatcher(None, name, x[3]).ratio() >= 0.5
-                   and difflib.SequenceMatcher(None, body, x[4]).ratio() >= 0.45 for x in self.recent)
+        # 이름도 깨진다(大油边油边大 → 大;由逾 5由逾大 0.31, 说你行你就行 → i兇f尔行 f尔就行 0.4) — 기록 셋에서 이 기준(이름 0.3 ·
+        # 본문 0.4)에 걸린 29건이 모두 메아리였다(哀嚎来T来治疗 → 哀ß豪采T采 治疔 를 '성난불길 협곡'으로 옮긴 것도, #140)
+        return any(x[2] == "zh" and difflib.SequenceMatcher(None, name, x[3]).ratio() >= 0.3
+                   and difflib.SequenceMatcher(None, body, x[4]).ratio() >= 0.4 for x in self.recent)
 
     FRAME_SAVE_EVERY = 3.0   # 초 — 화면 저장 간격
     FRAME_SAVE_MAX = 300     # 하루 최대 장수
@@ -1330,19 +1348,26 @@ class Live:
                 decision = "skip_system"  # 전리품 알림 · 애드온 안내(#138)
             elif m["name"] and re.fullmatch(r"[\d\s.]+", m["name"]):
                 decision = "skip_noname"  # 채널 퇴장 · 입장 알림('채널 퇴:[1.공개-오그리마]') — 이름이 숫자뿐이면 사람이 아니다
+            elif not m["name"]:
+                # 머리(이름)를 못 읽은 줄은 번역하지 않는다 — 기록 셋(내 PC 10-06 · PC방 10-05 두 번)에서 이름 없이 번역한 69줄이
+                # 모두 시스템 · 애드온 안내 · 깨진 한국어였다(쓸모 있는 외국어 0, #140)
+                decision = "skip_noname"
+            elif korean_name(m["name"]) and m["lang"] != "ko":
+                # 한글 이름 = 한국어 클라이언트를 쓰는 한국 사람 — 번역할 필요가 없다. 외국어처럼 보이는 것은 초성을 한자로 읽은
+                # 것(古古 · 大大 · 丁丁 = ㄱㄱ · ㅊㅊ · ㅜㅜ)이거나 한/영을 안 바꾸고 친 한국어(djtjdhtpdu = 어서오세요, #140)
+                if HANGUL.search(m["body"]):
+                    m["lang"] = "ko"
+                    decision = "pass_ko" if self.cfg.get("show_korean", True) else "skip_ko"
+                else:
+                    decision = "skip_ko"
             elif m["lang"] == "ko":
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
             elif link_only(m["body"]) or SLASH_ONLY.match(m["body"]):
                 decision = "pass_ko"  # 영어 링크만('[Deep Fathom Ring]') — 번역 없이 그대로 보인다(#138)
-            elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]):
+            elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]) or hangul_as_hanzi(f"{m['name']} {m['body']}"):
                 decision = "skip_junk"
-            elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("
-                                    or len(HANGUL.findall(re.sub(r"\[[^\]]*\]", "", m["body"]))) >= 2  # 한국어 클라이언트 이모트 · 시스템 줄(…방귀를 뀝니다)
-                                    or re.fullmatch(r"\S*\.(?:com|net|org|gg)/\S*", m["body"].strip())  # 주소만
-                                    or re.match(r"[^\[]*\]", m["body"])):  # '攻击 ]' — 앞 줄에서 떨어진 링크 끝 조각
-                decision = "skip_noname"  # 머리를 못 읽은 줄 — 깨진 머리([ 6 ，瞓丿)를 번역하지 않게
             else:
                 decision = "queued"
             first_body = m["body"]

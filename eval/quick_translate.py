@@ -40,6 +40,7 @@ EXTRA_IN = [
     {"src": "Ifm Cholaruk", "must": [["촐라루크"], ["구함", "구해"]], "must_not": ["콜라룩"]},
     {"src": "Suche Verzauberer für 2H Waffe", "must": [["마법부여"]], "must_not": ["마법사"]},
     {"src": "du monde pour ragefeu ?", "must": [["성난불길 협곡"], ["사람", "분"]], "must_not": ["길?"]},
+    {"src": "BDF -1TANK -1HEAL", "must": [["검은심연의 나락"], ["탱커 1", "탱커 한"], ["힐러 1", "힐러 한"]], "must_not": ["-1"]},  # #140
 ]
 
 

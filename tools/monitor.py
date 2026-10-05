@@ -49,7 +49,7 @@ def report(out: Path) -> str:
     import numpy as np
     from tools.eval_ocr import load_png, read_frame
     from translator.adfilter import AdFilter
-    from translator.live import LOOT_HISTORY, SYSTEM_NAMES, is_junk
+    from translator.live import LOOT_HISTORY, SYSTEM_NAMES, hangul_as_hanzi, is_junk, korean_name
     from watt import ocr, paths
     meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
     t0, t1 = meta["shots"][0]["t"], meta["shots"][-1]["t"]
@@ -76,6 +76,8 @@ def report(out: Path) -> str:
             if m["lang"] == "ko" or not m["name"] or w < 2 or is_junk(m["body"], True) or m["rows"][0]["y"] < pitch * 0.8:
                 continue
             if m["name"] in SYSTEM_NAMES or LOOT_HISTORY.search(m["body"]):  # 전리품 알림 · 애드온 조각 — 앱도 건너뛴다(#138)
+                continue
+            if korean_name(m["name"]) or hangul_as_hanzi(f"{m['name']} {m['body']}"):  # 한국 사람 글 · 깨진 한국어 — 앱도(#140)
                 continue
             # 본문이 한글 [괄호]뿐 — 머리말 [1. 공개 - 오그리마] 를 본문으로 다시 읽은 것('[1.개= 오극리마]', #116)
             if not re.sub(r"\W", "", re.sub(r"\[[^\]]*[가-힣][^\]]*\]?", "", m["body"])):
