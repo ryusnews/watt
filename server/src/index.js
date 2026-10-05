@@ -2,6 +2,8 @@
 //   POST /v1/terms            사전 후보(#7) — 동의한 설치만, 하루 1번
 //   POST /v1/report           인식 오류 신고(#14) — 이미지 + 영역 정보, 설치마다 24시간에 1번
 //   GET  /v1/health
+//   GET  /v1/releases         업데이트 확인 — GitHub 릴리스 목록을 5분 캐시해 넘긴다. WATT 가 GitHub API 를 직접 부르면
+//                             IP 당 시간 60번 제한에 PC방(공인 IP 하나를 여럿이 씀)에서 걸렸다(#123). 아무것도 저장하지 않는다
 //   /v1/admin/*               관리(Authorization: Bearer ADMIN_TOKEN)
 // 사람 이름 · 문장 · IP 원문은 저장하지 않는다. 설치 ID · IP 는 SALT 해시로만.
 
@@ -15,6 +17,7 @@ export default {
     const path = url.pathname.replace(/\/+$/, '');
     try {
       if (path === '/v1/health') return json({ ok: true });
+      if (path === '/v1/releases' && request.method === 'GET') return await releases();
       if (path === '/v1/terms' && request.method === 'POST') return await terms(request, env);
       if (path === '/v1/report' && request.method === 'POST') return await report(request, env);
       if (path.startsWith('/v1/admin/')) {
@@ -32,6 +35,25 @@ export default {
     await cleanup(env);
   },
 };
+
+// ---- 업데이트 확인(#123)
+const RELEASES = 'https://api.github.com/repos/ryusnews/watt/releases?per_page=30';
+
+async function releases() {
+  const r = await fetch(RELEASES, {
+    headers: { 'User-Agent': 'watt-api', Accept: 'application/vnd.github+json' },
+    cf: { cacheTtl: 300, cacheEverything: true },
+  });
+  if (!r.ok) return json({ error: 'github', status: r.status }, 502);
+  const rels = (await r.json()).map((x) => ({
+    tag_name: x.tag_name, draft: x.draft, prerelease: x.prerelease, html_url: x.html_url,
+    body: (x.body || '').slice(0, 4000),
+    assets: (x.assets || []).map((a) => ({ name: a.name, size: a.size, digest: a.digest, browser_download_url: a.browser_download_url })),
+  }));
+  return new Response(JSON.stringify(rels), {
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=300' },
+  });
+}
 
 // ---- 사전 후보(#7)
 async function terms(request, env) {

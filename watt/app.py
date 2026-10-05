@@ -451,7 +451,8 @@ class Api:
             self._update_t = time.time()
         except Exception as e:  # 인터넷이 없거나 GitHub 이 답하지 않음 — 조용히
             log.info("update check failed: %s", e)
-            return {"error": "업데이트를 확인하지 못했습니다"} if force else None
+            why = f" — {e}" if isinstance(e, update.CheckError) else ""
+            return {"error": "업데이트를 확인하지 못했습니다" + why} if force else None
         if self._update.get("newer") and not self._update.get("ready") and paths.FROZEN:
             self.apply_update()  # 뒤에서 바뀐 파일만 받아 둔다 — 끝나면 다시 시작할지 묻는다
         return self._update

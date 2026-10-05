@@ -21,7 +21,9 @@ import shutil
 import subprocess
 import sys
 import threading
+import socket
 import time
+import urllib.error
 import urllib.request
 import zipfile
 import zlib
@@ -32,6 +34,9 @@ from . import VERSION, paths, system
 
 REPO = "ryusnews/watt"
 API = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
+# WATT 서버가 GitHub 목록을 5분 캐시해 넘긴다 — GitHub API 는 IP 당 시간 60번이라 PC방(공인 IP 하나를 여럿이 씀)에서
+# '업데이트를 확인하지 못했습니다'(#123). 서버가 안 되면 GitHub API 로
+MIRROR = "https://watt-api.watt-api.workers.dev/v1/releases"
 PAGE = f"https://github.com/{REPO}/releases/latest"
 ZIP = re.compile(r"^WATT-Portable-(\d+\.\d+\.\d+)\.zip$")
 TRUSTED_HOSTS = {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
@@ -57,11 +62,39 @@ def parse(v: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
 
 
+class CheckError(Exception):
+    """업데이트 확인 실패 — 화면에 보일 까닭."""
+
+
+def _why(e: Exception) -> str:
+    if isinstance(e, urllib.error.HTTPError) and e.code in (403, 429):
+        return "GitHub 요청 한도 초과 — 잠시 뒤 다시"
+    if isinstance(e, urllib.error.HTTPError):
+        return f"서버 오류({e.code})"
+    if isinstance(e, (TimeoutError, socket.timeout)) or "timed out" in str(e):
+        return "응답 없음 — 인터넷 연결을 확인해 주세요"
+    return "연결 안 됨 — 인터넷 연결을 확인해 주세요"
+
+
+def _releases(timeout: float) -> list:
+    """릴리스 목록 — WATT 서버, 안 되면 GitHub API. 둘 다 안 되면 GitHub 쪽 까닭으로 CheckError."""
+    last = None
+    for url in (MIRROR, API):
+        try:
+            req = urllib.request.Request(url, headers={**UA, "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                rels = json.load(r)
+            if isinstance(rels, list):
+                return rels
+        except (OSError, ValueError) as e:  # URLError · HTTPError · 시간 초과 · 깨진 JSON
+            log.info("update source %s failed: %s", url.split("/")[2], e)
+            last = e
+    raise CheckError(_why(last) if last else "릴리스 목록을 읽지 못했습니다")
+
+
 def check(timeout: float = 6.0) -> dict:
     """포터블 zip 이 있는 가장 새 릴리스 — {version, current, newer, kind, url, size, sha256, page, notes, ready}."""
-    req = urllib.request.Request(API, headers={**UA, "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        rels = json.load(r)
+    rels = _releases(timeout)
     best = None
     for rel in rels:
         if rel.get("draft") or rel.get("prerelease"):
