@@ -1,5 +1,6 @@
 // WATT 받는 서버 (Cloudflare Worker)
 //   POST /v1/terms            사전 후보(#7) — 동의한 설치만, 하루 1번
+//   POST /v1/samples          번역 표본(#7) — 동의한 설치만, 50개씩, 설치마다 하루 200개(이름 · 채널 · 연락처 없이)
 //   POST /v1/report           인식 오류 신고(#14) — 이미지 + 영역 정보, 설치마다 24시간에 1번
 //   POST /v1/diag             진단 기록(#135) — 사용자가 정보 → '진단 기록 보내기'를 눌렀을 때만. zip 그대로 R2(14일 뒤 지움)
 //   GET  /v1/health
@@ -20,6 +21,7 @@ export default {
       if (path === '/v1/health') return json({ ok: true });
       if (path === '/v1/releases' && request.method === 'GET') return await releases();
       if (path === '/v1/terms' && request.method === 'POST') return await terms(request, env);
+      if (path === '/v1/samples' && request.method === 'POST') return await samples(request, env);
       if (path === '/v1/report' && request.method === 'POST') return await report(request, env);
       if (path === '/v1/diag' && request.method === 'POST') return await diag(request, env);
       if (path.startsWith('/v1/admin/')) {
@@ -63,6 +65,49 @@ async function diag(request, env) {
     'INSERT OR REPLACE INTO diags (id, at, day, install, ver, r2key, size) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(id, Date.now(), d, install, (request.headers.get('x-watt-ver') || '').slice(0, 16), key, bytes.length).run();
   return json({ ok: true, id }, 201);
+}
+
+// ---- 번역 표본(#7) — 앱이 이미 이름 · 연락처를 뺐지만 여기서도 한 번 더 거른다
+const SAMPLES_MAX_BYTES = 256 * 1024;
+const CONTACT = /https?:\/\/\S+|www\.\S+|discord(?:app)?\.(?:gg|com)\/\S+|\b[\w.-]+\.(?:com|net|org|gg|cn|ru|io|me|tv|cc|xyz|shop|top)\b(?:\/\S*)?|[\w.%+-]+@[\w-]+\.[\w.]+|\d{5,}/gi;
+
+async function samples(request, env) {
+  if (+(request.headers.get('content-length') || 0) > SAMPLES_MAX_BYTES) return json({ error: 'too large' }, 413);
+  const text = await request.text();
+  if (text.length > SAMPLES_MAX_BYTES) return json({ error: 'too large' }, 413);
+  let body;
+  try { body = JSON.parse(text); } catch { return json({ error: 'bad json' }, 400); }
+  if (!INSTALL.test(body.install || '') || !Array.isArray(body.items)) return json({ error: 'bad request' }, 400);
+  const items = body.items.slice(0, 100).map(cleanSample).filter(Boolean);
+  if (!items.length) return json({ ok: true, accepted: 0 });
+
+  const install = await hashed(env, 'i:' + body.install);
+  const ip = await hashed(env, 'ip:' + (request.headers.get('cf-connecting-ip') || ''));
+  if (!(await bump(env, 's:ip:' + ip, +env.SAMPLES_IP_DAY))) return json({ error: 'limit' }, 429);
+  if (!(await bump(env, 's:i:' + install, +env.SAMPLES_INSTALL_DAY, items.length))) return json({ error: 'limit', retry: 'tomorrow' }, 429);
+  if (!(await bump(env, 's:all', +env.SAMPLES_ALL_DAY, items.length))) return json({ error: 'busy' }, 503);
+
+  const now = Date.now(), d = today(), ver = String(body.ver || '').slice(0, 16);
+  await env.DB.batch(items.map((it) => env.DB.prepare(
+    'INSERT INTO samples (at, day, install, ver, lang, src, kind, model, sec, body, ko, reads, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(now, d, install, ver, it.lang, it.src, it.kind, it.model, it.sec, it.body, it.ko, it.reads, it.score)));
+  return json({ ok: true, accepted: items.length });
+}
+
+function cleanSample(it) {
+  if (!it || typeof it.body !== 'string' || typeof it.ko !== 'string') return null;
+  const mask = (s, n) => String(s).normalize('NFC').replace(CONTACT, '<id>').slice(0, n).trim();
+  const word = (s, n) => (typeof s === 'string' && /^[\w.:+-]*$/.test(s) ? s.slice(0, n) : '');
+  const body = mask(it.body, 400), ko = mask(it.ko, 600);
+  if (!body || !ko) return null;
+  const reads = {};
+  if (it.reads && typeof it.reads === 'object') {
+    for (const [k, v] of Object.entries(it.reads).slice(0, 8)) if (/^\w{1,12}$/.test(k) && typeof v === 'string') reads[k] = mask(v, 300);
+  }
+  return {
+    lang: LANGS.has(it.lang) ? it.lang : 'other', src: word(it.src, 4), kind: word(it.kind, 12), model: word(it.model, 40),
+    sec: Math.min(600, Math.max(0, +it.sec || 0)), body, ko, reads: JSON.stringify(reads), score: Math.min(9, Math.max(0, parseInt(it.score, 10) || 0)),
+  };
 }
 
 // ---- 업데이트 확인(#123)
@@ -206,7 +251,9 @@ async function admin(request, env, path, url) {
     return json({
       reports: await q("SELECT count(*) AS n, sum(status = 'new') AS new, sum(size) AS bytes FROM reports"),
       terms: await q("SELECT count(*) AS n, sum(status = 'new') AS new FROM terms"),
-      today: (await env.DB.prepare('SELECT key, n FROM quota WHERE day = ? AND key IN (?, ?)').bind(today(), 'r:all', 't:all').all()).results,
+      samples: await q("SELECT count(*) AS n, sum(status = 'new') AS new, sum(status = 'bad') AS bad, sum(status = 'doubt') AS doubt FROM samples"),
+      today: (await env.DB.prepare('SELECT key, n FROM quota WHERE day = ? AND key IN (?, ?)').bind(today(), 'r:all', 't:all').all()).results.concat(
+        (await env.DB.prepare('SELECT key, n FROM quota WHERE day = ? AND key = ?').bind(today(), 's:all').all()).results),
     });
   }
   if (parts[0] === 'reports') {
@@ -260,6 +307,31 @@ async function admin(request, env, path, url) {
       return json({ ok: true });
     }
   }
+  if (path === 'samples' && request.method === 'GET') {
+    // status=new 부터, after=<id> 로 이어 받기
+    const status = url.searchParams.get('status') || 'new';
+    const limit = Math.min(1000, +url.searchParams.get('limit') || 500);
+    const after = +url.searchParams.get('after') || 0;
+    const rows = await env.DB.prepare(
+      'SELECT id, day, ver, lang, src, kind, model, sec, body, ko, reads, score, status, verdict FROM samples WHERE status = ? AND id > ? ORDER BY id LIMIT ?'
+    ).bind(status, after, limit).all();
+    return json(rows.results.map((r) => ({ ...r, reads: JSON.parse(r.reads) })));
+  }
+  if (path === 'samples' && request.method === 'POST') {
+    // 검증 결과 [{id, status, verdict}]
+    const { items } = await request.json();
+    if (!Array.isArray(items)) return json({ error: 'bad request' }, 400);
+    const ok = items.filter((x) => x && Number.isInteger(x.id) && ['new', 'ok', 'bad', 'doubt'].includes(x.status)).slice(0, 1000);
+    for (let i = 0; i < ok.length; i += 100) {
+      await env.DB.batch(ok.slice(i, i + 100).map((x) => env.DB.prepare('UPDATE samples SET status = ?, verdict = ? WHERE id = ?')
+        .bind(x.status, String(x.verdict || '').slice(0, 300), x.id)));
+    }
+    return json({ ok: true, updated: ok.length });
+  }
+  if (parts[0] === 'samples' && parts.length === 2 && request.method === 'DELETE') {
+    await env.DB.prepare('DELETE FROM samples WHERE id = ?').bind(+parts[1] || 0).run();
+    return json({ ok: true });
+  }
   if (path === 'terms' && request.method === 'GET') {
     const min = Math.max(1, +url.searchParams.get('min') || 2);
     const status = url.searchParams.get('status') || 'new';
@@ -302,14 +374,15 @@ async function cleanup(env) {
     await env.DB.batch(old.results.map((r) => env.DB.prepare('DELETE FROM diags WHERE id = ?').bind(r.id)));
   }
   await env.DB.prepare('DELETE FROM quota WHERE day < ?').bind(dayOffset(-2)).run();
+  await env.DB.prepare('DELETE FROM samples WHERE day < ?').bind(dayOffset(-(+env.SAMPLES_KEEP_DAYS || 90))).run();
   await env.DB.prepare('DELETE FROM term_installs WHERE day < ?').bind(dayOffset(-90)).run();
 }
 
 // ---- 도우미
-async function bump(env, key, limit) {
+async function bump(env, key, limit, by = 1) {
   const r = await env.DB.prepare(
-    'INSERT INTO quota (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n'
-  ).bind(today(), key).first();
+    'INSERT INTO quota (day, key, n) VALUES (?1, ?2, ?3) ON CONFLICT (day, key) DO UPDATE SET n = n + ?3 RETURNING n'
+  ).bind(today(), key, by).first();
   return r.n <= limit;
 }
 

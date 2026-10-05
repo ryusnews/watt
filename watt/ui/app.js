@@ -232,6 +232,7 @@ const STEPS = [
   { key: 'model', name: '번역 모델', icon: 'i-download' },
   { key: 'addon', name: '게임 · 글꼴', icon: 'i-game' },
   { key: 'region', name: '채팅 영역', icon: 'i-frame' },
+  { key: 'share', name: '품질 개선 참여', icon: 'i-shield' },
   { key: 'test', name: '번역 시험', icon: 'i-test' },
 ];
 const TASK_OF = { ocr: 'ocr', ai: 'ai', ollama: 'ollama', model: 'pull', region: 'region', test: 'test' };
@@ -423,6 +424,19 @@ const DETAIL = {
       <button class="btn ${r ? '' : 'primary'}" data-act="find_region" ${run ? 'disabled' : ''} data-tip="게임이 켜져 있어야 합니다">${icon('i-target', 'sm')}${run ? '찾는 중' : r ? '다시 찾기' : '찾기'}</button></span>`;
     return [`${pick}<div class="preview">${img}</div>${run ? '<div class="progress indet"><i></i></div>' : facts}${err}<div class="chips">${tips}</div>`, action];
   },
+  share() {
+    // 번역 품질 개선 참여(#7) — 기본값 없이 직접 고른다. 무엇을 보내고 무엇을 빼는지는 칩 + 툴팁으로
+    const v = S.state.settings.share_samples;
+    const opt = (on, label) => `<button class="${v === on ? 'on' : ''}" data-act="share" data-v="${on ? 'on' : 'off'}">${label}</button>`;
+    const facts = [['i-msg', '원문 · 번역 · 언어', '새로 번역한 외국어 채팅의 원문 · 번역 · 언어 · 모델 · 번역 시간 · 글자 인식 결과'],
+      ['i-eyeoff', '이름 · 채널 · 연락처 빼고', '보낸 사람 이름 · 채널 · 연락처 · 주소 · 화면은 보내지 않습니다'],
+      ['i-timer', '하루 200개 · 90일', '하루 최대 200개, 서버는 90일 뒤 지웁니다'],
+      ['i-lock', '번역은 PC 안에서', '번역은 그대로 이 PC 에서만 합니다 — 보내는 것은 검증용 표본뿐']]
+      .map(([i, l, t]) => `<span class="chip" data-tip="${esc(t)}">${icon(i, 'sm')}${l}</span>`).join('');
+    const sent = v ? `<button class="icon-btn sq" data-act="open_sent" aria-label="보낸 것 보기" data-tip="보낸 것 보기">${icon('i-folder', 'sm')}</button>` : '';
+    return [`<div class="seg mode-seg" role="radiogroup" aria-label="품질 개선 참여">${opt(true, '참여')}${opt(false, '참여 안 함')}</div>
+      <div class="chips">${facts}</div>`, sent];
+  },
   test() {
     const run = S.progress.test || S.state.busy.includes('test'), res = S.results.test;
     // 받기: 지금 게임 채팅창의 최근 외국어 3줄 · 보내기: 입력한 한국어(없으면 예시)
@@ -460,6 +474,8 @@ async function act(name, d = {}) {
     if (!(await confirmBox('Ollama 제거', '통역이 꺼지고 Ollama 제거 프로그램이 열립니다. 받은 모델 파일은 남습니다', '제거'))) return;
     return call('uninstall_ollama');
   }
+  if (name === 'share') { save({ share_samples: d.v === 'on' }, true); return renderSetup(); }
+  if (name === 'open_sent') return call('open_folder', 'sent');
   if (name === 'install_ocr') return call('install_ocr', null);
   if (name === 'enable_ai') { const r = await call('enable_ai', null); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
   if (name === 'toggle_ai') { const v = d.v, on = (S.ai && S.ai.langs || []).includes(v); const r = await call('set_ai_lang', v, !on); if (r && r.started) S.progress.ai = { done: 0, total: r.bytes }; S.ai = await call('get_ai'); return renderSetup(); }
@@ -550,6 +566,7 @@ function renderSettings() {
   if (!names.includes(c.model)) names.unshift(c.model);
   sel.innerHTML = names.map((n) => `<option ${n === c.model ? 'selected' : ''}>${esc(n)}</option>`).join('');
   setSwitch('#set-update', c.update_check);
+  setSwitch('#set-share', c.share_samples === true); $('#set-opensent').hidden = c.share_samples !== true;
   call('get_storage').then((u) => { $('#set-usage').textContent = mb(u.total); $('#set-usage').dataset.tip = `화면 캡처 ${mb(u.frames)} · 추적 ${mb(u.trace)} · 번역 기록 ${mb(u.logs)} · 받은 파일 ${mb(u.downloads)}`; }).catch(() => {});
   setSwitch('#set-preload', c.preload); $('#set-autounload').value = String(c.auto_unload_min || 0); setSwitch('#set-orig', c.show_original); setSwitch('#set-korean', c.show_korean !== false); setSwitch('#set-logs', c.keep_logs);
   $('#set-font').value = c.overlay_font; $('#out-font').textContent = c.overlay_font;
@@ -591,6 +608,15 @@ function save(changes, quiet = false) {
   Object.assign(S.state.settings, changes);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => { S.state.settings = await call('save_settings', changes); if (!quiet) toast('저장했습니다', 'ok'); renderAll(); }, 250);
+}
+
+// 한 번만 묻는다 — 닫아도 '참여 안 함'으로 남는다(번역 설정에서 언제든 바꿈)
+async function askShare() {
+  if (S.asking) return;
+  S.asking = true;
+  const yes = await confirmBox('번역 품질 개선에 참여할까요?', '새로 번역한 외국어 채팅의 원문 · 번역만(이름 · 채널 · 연락처 빼고) 하루 200개까지 보냅니다 · 번역 설정에서 언제든 끔', '참여', '참여 안 함', false);
+  S.asking = false;
+  save({ share_samples: !!yes });
 }
 
 /* ---------- 용어 사전 ---------- */
@@ -1006,6 +1032,8 @@ function bind() {
     const r = await call('clear_logs'); toast(`${mb(r.freed)} 비웠습니다`, 'ok'); renderSettings();
   };
   $('#set-update').onclick = () => { save({ update_check: !S.state.settings.update_check }); renderSettings(); };
+  $('#set-share').onclick = () => { save({ share_samples: S.state.settings.share_samples !== true }); renderSettings(); };
+  $('#set-opensent').onclick = () => call('open_folder', 'sent');
   $('#btn-update').onclick = () => applyUpdate();
   $('#btn-check-update').onclick = () => checkUpdate(true);
   $('#btn-diag').onclick = async () => {
@@ -1072,6 +1100,7 @@ function bind() {
   if (c.input_on && !S.live.running.input && setupDone()) call('start', 'input');
   if (setupDone()) call('resume').then((r) => { if (r && r.live) { S.starting = Date.now(); toast('업데이트 전처럼 통역을 이어서 켭니다', 'ok'); refresh(); } }).catch(() => {});
   if (S.view === 'home' && !c.onboarded) setTimeout(() => coach(true), 400);
+  else if (S.view === 'home' && c.share_samples == null) setTimeout(askShare, 1200);  // 참여 단계가 생기기 전에 설정을 마친 사용자(#7)
   checkUpdate(false).catch(() => {});
   setInterval(() => checkUpdate(false).catch(() => {}), 30 * 60 * 1000);  // 켜 둔 동안에도 새 버전을 알린다(설정 '자동 확인'을 따름)
   setInterval(() => refresh(false).catch(() => {}), 1500);
@@ -1082,7 +1111,7 @@ function bind() {
 let mockTerms = null;
 function mockApi() {
   const settings = { model: 'gemma4:12b', out_lang: 'en', out_mode: 'clipboard', overlay_font: 11, overlay_alpha: 0.88, overlay_lines: 10,
-    show_original: false, show_korean: true, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, auto_unload_min: 0, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true };
+    show_original: false, show_korean: true, ad_filter: 'fold', chat_newest: 'bottom', keep_logs: true, preload: true, auto_unload_min: 0, input_on: true, welcomed: true, onboarded: true, setup_done: true, update_check: true, share_samples: null };
   const running = { live: true, input: true };
   const feed = [
     { t: '2026-10-01T00:05:46', lang: 'zh', name: '青山', body: '20LR 求组 AH', ko: '20레벨 사냥꾼, 통곡의 동굴 파티 찾음' },
@@ -1105,7 +1134,7 @@ function mockApi() {
       { name: 'gemma4:e4b', label: 'Gemma 4 E4B', download_gb: 6.6, vram_gb: 7, verified: false, installed: false, recommended: false },
       { name: 'gemma4:e2b', label: 'Gemma 4 E2B', download_gb: 4.6, vram_gb: 5, verified: false, installed: false, recommended: false }],
     game: { exe: 'WowB.exe', flavor: '클래식 베타', w: 2560, h: 1440 }, region: { w: 688, h: 325, line_h: 20, lines: 6 },
-    steps: { system: 'done', ocr: 'done', ai: 'todo', ollama: 'done', model: 'done', addon: 'done', region: 'done', test: 'done' },
+    steps: { system: 'done', ocr: 'done', ai: 'todo', ollama: 'done', model: 'done', addon: 'done', region: 'done', share: 'todo', test: 'done' },
     running, busy: [], removable_ocr: ['zh-Hans-CN', 'ru-RU'],
   });
   const ok = (v) => Promise.resolve(v);

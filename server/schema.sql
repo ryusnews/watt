@@ -57,3 +57,24 @@ CREATE TABLE IF NOT EXISTS quota (
   n INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, key)
 );
+
+-- #7 번역 품질 개선 참여 — 동의한 설치의 번역 표본(이름 · 채널 · 연락처 없이). 90일 뒤 지움
+CREATE TABLE IF NOT EXISTS samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  install TEXT NOT NULL,                -- 설치 ID 의 SALT 해시
+  ver TEXT NOT NULL,
+  lang TEXT NOT NULL,                   -- 통역 창이 고른 언어(en · zh · ru …)
+  src TEXT NOT NULL DEFAULT '',         -- 모델이 본 원문 언어 표시(es · de …)
+  kind TEXT NOT NULL DEFAULT '',        -- chat · party · trade · guild · ad
+  model TEXT NOT NULL DEFAULT '',
+  sec REAL NOT NULL DEFAULT 0,
+  body TEXT NOT NULL,
+  ko TEXT NOT NULL,
+  reads TEXT NOT NULL DEFAULT '{}',     -- 엔진마다 읽은 글(JSON)
+  score INTEGER NOT NULL DEFAULT 0,     -- 먼저 볼 것(엔진끼리 다름 · 원문 낱말 남음)
+  status TEXT NOT NULL DEFAULT 'new',   -- new · ok · bad · doubt
+  verdict TEXT NOT NULL DEFAULT ''      -- 검증 까닭
+);
+CREATE INDEX IF NOT EXISTS samples_status ON samples (status, id);

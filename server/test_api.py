@@ -88,6 +88,20 @@ check("report 이미지 아님", s == 415, b)
 s, b = report(dict(meta, install=str(uuid.uuid4())), png(9, 900, 900))
 check("report 큰 이미지(압축 안 된 PNG ≤1MB면 받음)", s in (201, 413), b)
 
+sm = [{"lang": "zh", "kind": "chat", "model": "gemma4:e2b", "sec": 2.7, "body": "有去YY的嘛 加微信 wx123456789", "ko": "YY 가는 사람 있나요?",
+       "reads": {"zh": "有去YY的嘛", "ru": "YY", "evil key!": "x"}, "score": 1},
+      {"lang": "en", "body": "LF tank www.gold-shop.com", "ko": "탱커 구함"}, {"lang": "en", "body": "", "ko": "빈 원문"}]
+s, b = post_json("/v1/samples", {"install": a, "ver": "0.2.43", "items": sm})
+check("samples 받기 · 빈 원문 거름", s == 200 and json.loads(b)["accepted"] == 2, b)
+s, b = post_json("/v1/samples", {"install": c, "items": [dict(sm[1], body=f"LF tank {i}") for i in range(201)][:100]})
+check("samples 한 번 100개까지", s == 200 and json.loads(b)["accepted"] == 100, b)
+s, b = post_json("/v1/samples", {"install": c, "items": [dict(sm[1], body=f"LF heal {i}") for i in range(100)]})
+check("samples 설치마다 하루 200개", s == 200, b)
+s, b = post_json("/v1/samples", {"install": c, "items": sm[:1]})
+check("samples 하루 몫을 넘으면 → 429", s == 429, b)
+s, b = post_json("/v1/samples", {"install": "short", "items": sm})
+check("samples 잘못된 설치 ID", s == 400, b)
+
 s, b = call("GET", "/v1/admin/stats")
 check("admin 키 없이 → 401", s == 401, b)
 if ADMIN:
@@ -104,6 +118,16 @@ if ADMIN:
     check("admin 사전 후보 — NY 설치 2 · 횟수 8", t.get(("NY", "zh"), {}).get("installs") == 2 and t[("NY", "zh")]["hits"] == 8, t.get(("NY", "zh")))
     s, b = call("GET", "/v1/admin/stats", headers=auth)
     check("admin 통계", s == 200, b)
+    s, b = call("GET", "/v1/admin/samples?limit=1000", headers=auth)
+    got = [r for r in (json.loads(b) if s == 200 else []) if r["ver"] in ("0.2.43", "")]
+    zh = next((r for r in got if r["lang"] == "zh" and "YY" in r["body"]), None)
+    check("admin 표본 — 연락처 · 이상한 엔진 이름은 서버가 거름", zh and "123456789" not in zh["body"] and "evil key!" not in zh["reads"], zh)
+    if zh:
+        s, b = call("POST", "/v1/admin/samples", json.dumps({"items": [{"id": zh["id"], "status": "ok", "verdict": "시험"}]}).encode(),
+                    {**auth, "content-type": "application/json"})
+        check("admin 표본 판정 저장", s == 200 and json.loads(b)["updated"] == 1, b)
+    for r in got:  # 시험 표본은 지운다
+        call("DELETE", f"/v1/admin/samples/{r['id']}", headers=auth)
 
 print(f"{sum(results)}/{len(results)}")
 sys.exit(0 if all(results) else 1)

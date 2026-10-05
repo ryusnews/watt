@@ -19,7 +19,7 @@ from collections import deque
 
 import webview
 
-from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, report, runner, screen, settings, system, update
+from . import APP_FULL, APP_NAME, VERSION, chat_region, housekeeping, ocr, paths, report, runner, samples, screen, settings, system, update
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 log = logging.getLogger("watt")
@@ -125,6 +125,7 @@ class Api:
             "model": "running" if "pull" in self._busy else ("done" if model_ok else "todo"),
             "addon": "done" if any(g["addon"] for g in self._game_list() if g["supported"]) else "todo",
             "region": "done" if region else "todo",
+            "share": "done" if cfg.get("share_samples") is not None else "todo",  # 품질 개선 참여(#7) — 직접 고름
             "test": "done" if cfg.get("setup_done") else "todo",
         }
         return {
@@ -283,6 +284,8 @@ class Api:
     def save_settings(self, changes: dict) -> dict:
         old = settings.load()["model"]
         cfg = settings.save(changes)
+        if changes.get("share_samples") is False:
+            samples.clear()  # 참여를 끄면 모아 둔 것도 보내지 않는다(#7)
         self._switch_model(old, cfg["model"])
         return cfg
 
@@ -937,7 +940,7 @@ class Api:
 
     @_logged
     def open_folder(self, which: str = "data") -> bool:
-        target = {"data": paths.DATA, "logs": paths.LOGS}.get(which, paths.DATA)
+        target = {"data": paths.DATA, "logs": paths.LOGS, "sent": samples.SENT}.get(which, paths.DATA)
         target.mkdir(parents=True, exist_ok=True)
         os.startfile(str(target))
         return True

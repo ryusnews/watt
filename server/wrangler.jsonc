@@ -1,5 +1,5 @@
 {
-  // WATT 받는 서버 — 사전 후보(#7) · 인식 오류 신고(#14). 비밀 값(ADMIN_TOKEN, SALT)은 `wrangler secret put` 으로만
+  // WATT 받는 서버 — 사전 후보 · 번역 표본(#7) · 인식 오류 신고(#14) · 진단 기록(#135). 비밀 값(ADMIN_TOKEN, SALT)은 `wrangler secret put` 으로만
   "name": "watt-api",
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
@@ -19,8 +19,12 @@
     "DIAG_MAX_BYTES": "31457280", // 진단 기록(#135) 한 번 30MB
     "DIAG_INSTALL_DAY": "5",
     "DIAG_IP_DAY": "10",
-    "DIAG_ALL_DAY": "200",
-    "DIAG_KEEP_DAYS": "14"        // 다른 플레이어 채팅이 들어 있어 짧게
+    "DIAG_ALL_DAY": "50",       // 한 건 30MB 까지 · 14일 — R2 무료 10GB 안에
+    "DIAG_KEEP_DAYS": "14",       // 다른 플레이어 채팅이 들어 있어 짧게
+    "SAMPLES_INSTALL_DAY": "200", // 번역 표본(#7) 설치마다 하루
+    "SAMPLES_IP_DAY": "300",      // 요청 수 — PC방은 공인 IP 하나를 여럿이 쓴다
+    "SAMPLES_ALL_DAY": "30000",   // 하루 전체 표본 — D1 무료 쓰기 10만 행(표본 1 + 색인 1)
+    "SAMPLES_KEEP_DAYS": "90"
   },
   "observability": { "enabled": true }
 }

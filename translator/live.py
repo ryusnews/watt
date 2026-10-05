@@ -20,7 +20,7 @@ from collections import Counter, deque
 import numpy as np
 from pathlib import Path
 
-from watt import chat_region, paths, screen, settings
+from watt import chat_region, paths, samples, screen, settings
 from watt import tkstyle as tks
 from watt.ocr import Reader
 
@@ -1546,6 +1546,11 @@ class Live:
                 self.events.put(("drop", m))
                 continue
             self.log_item(m, m["ko"], round(sec, 2), cached)
+            if not m.get("pass") and not cached and not error:
+                try:
+                    samples.add(m, sec, incoming.MODEL)  # 품질 개선 참여(#7) — 동의했을 때만
+                except Exception:
+                    logging.exception("samples")
             self.events.put(("update", m))
             if not m.get("pass"):
                 now = time.monotonic()
@@ -1658,6 +1663,7 @@ def main() -> int:
     logging.info("live start")
     threading.excepthook = lambda a: logging.critical("thread %s", a.thread and a.thread.name,
                                                       exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
+    threading.Thread(target=samples.flush, name="samples", daemon=True).start()  # 지난번에 남은 표본(#7)
     try:
         Live().run()
         logging.info("live exit")
