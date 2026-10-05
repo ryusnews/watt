@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -24,6 +25,7 @@ import urllib.request
 import zipfile
 from ctypes import wintypes as wt
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import paths
 
@@ -176,7 +178,20 @@ def _get(path: str, timeout: float = 1.5):
         return json.load(r)
 
 
+def _port_open(timeout: float = 0.25) -> bool:
+    """실행기 포트가 열려 있나 — Windows 는 아무도 안 듣는 포트에 연결하면 거절을 바로 주지 않고 시간 초과까지 기다려
+    (1.5초) 실행기가 꺼져 있으면 런처 get_state 가 3초씩 걸렸다(PC방 2026-10-05, #125). 켜져 있으면 연결은 바로 된다."""
+    u = urlparse(url())
+    try:
+        with socket.create_connection((u.hostname, u.port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def running() -> bool:
+    if not _port_open():
+        return False
     try:
         _get("/api/version")
         return True
