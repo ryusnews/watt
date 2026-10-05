@@ -586,6 +586,27 @@ class Api:
         return res
 
     @_logged
+    def copy_text(self, text: str) -> bool:
+        """클립보드에 글자 — 런처(웹뷰)는 navigator.clipboard 가 막힐 수 있어 Win32 로."""
+        k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+        k32.GlobalAlloc.restype = ctypes.c_void_p
+        k32.GlobalLock.restype = ctypes.c_void_p
+        k32.GlobalLock.argtypes = k32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+        u32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+        data = (str(text) + "\0").encode("utf-16-le")
+        if not u32.OpenClipboard(None):
+            return False
+        try:
+            u32.EmptyClipboard()
+            h = k32.GlobalAlloc(0x0002, len(data))  # GMEM_MOVEABLE
+            p = k32.GlobalLock(h)
+            ctypes.memmove(p, data, len(data))
+            k32.GlobalUnlock(h)
+            return bool(u32.SetClipboardData(13, h))  # CF_UNICODETEXT — 성공하면 Windows 가 메모리를 가진다
+        finally:
+            u32.CloseClipboard()
+
+    @_logged
     def clear_logs(self) -> dict:
         return housekeeping.clear()
 

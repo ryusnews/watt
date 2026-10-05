@@ -1016,7 +1016,12 @@ function bind() {
     b.disabled = true; toast('보내는 중…');
     const r = await call('send_diag');
     b.disabled = false;
-    toast(r && r.ok ? `보냈습니다 — 번호 ${r.id}` : (r && r.error) || '보내지 못했습니다', r && r.ok ? 'ok' : 'err');
+    if (!(r && r.ok)) { toast((r && r.error) || '보내지 못했습니다', 'err'); return; }
+    // 번호를 알림으로만 보이면 금방 사라져 전할 수가 없었다(PC방 2026-10-05) — 닫을 때까지 보이고 복사 단추
+    if (await confirmBox('보냈습니다', `번호 ${r.id}`, '번호 복사', '닫기', false)) {
+      const ok = await call('copy_text', r.id);
+      toast(ok ? '복사했습니다' : `번호 ${r.id}`, 'ok');
+    }
   };
   $('#btn-cleanup').onclick = async () => {
     const w = (S.state && S.state.watt_installed) || {};
@@ -1129,7 +1134,7 @@ function mockApi() {
     get_shot: () => ok({ img: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#2b3240"/><rect x="10" y="560" width="520" height="260" fill="#000" opacity=".6"/></svg>'), w: 1600, h: 900, found: { x: 10, y: 560, w: 520, h: 260 }, report: { can: true, wait_h: 0 } }),
     set_region: () => ok({ preview: '' }), send_report: () => ok({ ok: true }), restart_update: () => ok({ restarting: '0.1.3' }),
     cleanup_installed: () => ok({ started: true }),
-    diag_preview: () => ok({ size: 14.2 * 1024 ** 2, frames: 80, trace: 2, has_live: true }), send_diag: () => ok({ ok: true, id: '3fa9c1e07b2d', size: 9.8 * 1024 ** 2 }),
+    diag_preview: () => ok({ size: 14.2 * 1024 ** 2, frames: 80, trace: 2, has_live: true }), send_diag: () => ok({ ok: true, id: '3fa9c1e07b2d', size: 9.8 * 1024 ** 2 }), copy_text: () => ok(true),
     list_windows: () => ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],
       others: [{ exe: 'chrome.exe', title: 'Chrome', w: 1200, h: 900 }], picked: settings.game_exe || '', current: 'WowB.exe' }),
     pick_window: (exe) => { settings.game_exe = exe; return ok({ games: [{ exe: 'WowB.exe', title: '월드 오브 워크래프트', w: 1920, h: 1009 }],
