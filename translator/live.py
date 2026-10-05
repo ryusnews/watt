@@ -78,6 +78,19 @@ def _outside_links(body: str) -> str:
     return re.sub(r"\[[^\[\]]*\]", " ", body)
 
 
+# 사람이 쓴 말이 아닌 줄 — 번역하지 않는다. PC방 기록에서 번역 249건 중 56건이 이런 줄이었다(CPU 로 한 건 4초, #138)
+SYSTEM_NAMES = {"전리품"}  # 한국어 클라이언트의 '[전리품]: [아이템]' 채널
+LOOT_HISTORY = re.compile(r"(?i)[lih|]{0,3}[li]oot\s*history")  # LootHistory 애드온 조각(HlootHistory · lHIootHistory …)
+ADDON_LINE = re.compile(r"(?i)\bloaded\b|\btype /\w+|\bhas known incompatib|^\s*RestedXP\b")  # 이름 없는 애드온 안내
+
+
+def link_only(body: str) -> bool:
+    """[링크]만 있는 글 — 번역할 말이 없다(라틴 · 한글 링크는 번역해도 원문 그대로 둔다). 한자 · 키릴 링크는 옮길 것이 있어 뺀다."""
+    links = re.findall(r"\[[^\[\]]*\]", body)
+    return (bool(links) and not re.search(r"\w", _outside_links(body))
+            and not any(CJK.search(x) or CYRILLIC.search(x) for x in links))
+
+
 def korean_body(body: str) -> bool:
     """링크를 빼고 한글이 4자 이상이고 라틴보다 많다 — 한국어 글."""
     s = _outside_links(body)
@@ -1288,18 +1301,25 @@ class Live:
             m["id"] = f"{self.trace.sid}-{self.msg_no}"
             if m["lang"] == "en" and korean_body(m["body"]):
                 m["lang"] = "ko"  # 링크 뒤 한국어('[지식인의 부적]혹시 이거 퀘스트 어디서…')를 영어로 판정했다
+            if m["lang"] != "ko" and link_only(m["body"]) and HANGUL_LINK.search(m["body"]):
+                m["lang"] = "ko"  # '[이름]: [예언자의 단망토]' — 한국어 클라이언트 링크만, 한국 사람 글(#138)
             if m["name"] and m["name"] in self.cfg.get("hidden_names", []):
                 decision = "hidden"  # 통역 창에서 숨긴 사람(#13)
             elif self.first:
                 decision = "skip_first"  # 켰을 때 이미 보이던 줄은 번역하지 않는다
             elif edge is not None and (i > edge if newest_top else i < edge):
                 decision = "skip_old"  # 앞 화면에도 있던 메시지보다 옛 쪽
+            elif (m["name"] in SYSTEM_NAMES or LOOT_HISTORY.search(m["body"])
+                  or (not m["name"] and ADDON_LINE.search(m["body"]))):
+                decision = "skip_system"  # 전리품 알림 · 애드온 안내(#138)
             elif m["name"] and re.fullmatch(r"[\d\s.]+", m["name"]):
                 decision = "skip_noname"  # 채널 퇴장 · 입장 알림('채널 퇴:[1.공개-오그리마]') — 이름이 숫자뿐이면 사람이 아니다
             elif m["lang"] == "ko":
                 decision = "pass_ko" if self.cfg.get("show_korean", True) and m["name"] else "skip_ko"
             elif len(re.sub(r"\W", "", m["body"])) < 2:
                 decision = "skip_short"
+            elif link_only(m["body"]):
+                decision = "pass_ko"  # 영어 링크만('[Deep Fathom Ring]') — 번역 없이 그대로 보인다(#138)
             elif is_junk(m["body"], bool(m["name"])) or garbled_ko(m["body"]):
                 decision = "skip_junk"
             elif not m["name"] and (len(re.sub(r"\W", "", m["body"])) < 8 or m["rows"][0]["text"].lstrip()[:1] in "[【〔("

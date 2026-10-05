@@ -49,7 +49,7 @@ def report(out: Path) -> str:
     import numpy as np
     from tools.eval_ocr import load_png, read_frame
     from translator.adfilter import AdFilter
-    from translator.live import is_junk
+    from translator.live import LOOT_HISTORY, SYSTEM_NAMES, is_junk
     from watt import ocr, paths
     meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
     t0, t1 = meta["shots"][0]["t"], meta["shots"][-1]["t"]
@@ -74,6 +74,8 @@ def report(out: Path) -> str:
             w = len(re.sub(r"\W", "", m["body"]))
             # 앱이 번역하지 않는 것은 빼고 — 한국어(그대로 보임), 이름 없는 줄, 잡음, 화면 맨 위에서 잘린 메시지(머리가 위로 밀려 나감)
             if m["lang"] == "ko" or not m["name"] or w < 2 or is_junk(m["body"], True) or m["rows"][0]["y"] < pitch * 0.8:
+                continue
+            if m["name"] in SYSTEM_NAMES or LOOT_HISTORY.search(m["body"]):  # 전리품 알림 · 애드온 조각 — 앱도 건너뛴다(#138)
                 continue
             # 본문이 한글 [괄호]뿐 — 머리말 [1. 공개 - 오그리마] 를 본문으로 다시 읽은 것('[1.개= 오극리마]', #116)
             if not re.sub(r"\W", "", re.sub(r"\[[^\]]*[가-힣][^\]]*\]?", "", m["body"])):
